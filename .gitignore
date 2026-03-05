@@ -1,0 +1,8 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+example/*
+src/uont/__pycache__/*
+prepare.ipynb
+current-workflow.sh
+.vscode/*

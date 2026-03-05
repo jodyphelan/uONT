@@ -1,0 +1,251 @@
+"""
+Module containing functions that implement the core processing steps of the uONT workflow.
+These functions perform specific tasks such as filtering reads, removing adapters, estimating genome size, downsampling reads, assembling genomes, and polishing assemblies. 
+They are designed to be called by the higher-level workflow functions in the workflow module, which orchestrate the overall processing logic and tool selection. 
+Each function takes in the necessary input files and parameters, executes the appropriate commands using the selected tools, and produces the expected output files. 
+This modular design allows for flexibility in tool choice and makes it easier to maintain and extend the processing steps as needed.
+"""
+
+import os
+import logging
+import pandas as pd
+from pathogenprofiler_core import run_cmd
+from dataclasses import dataclass
+from tqdm import tqdm
+from typing import Literal
+from .jobs import (
+    job_assemble_autocycler,
+    job_assemble_flye,
+    job_estimate_genome_size_autocycler, 
+    job_fastq_filter_chopper, 
+    job_remove_adapters_porechop, 
+    job_downsample_filtlong,
+    job_polish_medaka,
+)
+from .types import FullPath
+
+
+@dataclass
+class Sample:
+    lab_id: str
+    barcode: str
+    fastq_file: FullPath
+
+
+def process_collate_barcode_fastqs(
+    source_dir: str,
+    output_dir: str,
+    sample_sheet: str,
+) -> None:
+    """Collate fastq files from barcoded samples and rename according to a sample sheet.
+    
+    Reads an Excel sample sheet containing lab_id and barcode columns, then concatenates
+    all fastq files within each barcode directory into a single file named by lab_id.
+    
+    Args:
+        source_dir (str): Directory containing subdirectories for each barcode with fastq files.
+        output_dir (str): Directory where the collated fastq files will be written.
+        sample_sheet (str): Path to Excel file with lab_id and barcode columns.
+    
+    Returns:
+        list[Sample]: Sample objects containing lab_id, barcode, and fastq_file paths.
+        
+    Raises:
+        FileNotFoundError: If a barcode directory specified in sample sheet doesn't exist.
+    """
+    sample_sheet_df = pd.read_excel(sample_sheet)
+    
+    result = []
+    for index, row in tqdm(list(sample_sheet_df.iterrows()), desc="Collating fastq files"):
+        sample_id = row['lab_id']
+        barcode = row['barcode']
+        if not os.path.exists(f'{source_dir}/{barcode}'):
+            raise FileNotFoundError(f"Directory for barcode {barcode} not found in {source_dir}. Exiting.")
+        fastq_files = os.listdir(f'{source_dir}/{barcode}')
+        if len(fastq_files) == 0:
+            logging.warning(f"No fastq files found for barcode {barcode} in {source_dir}/{barcode}. Skipping.")
+            continue
+        
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        cmd = f"cat {' '.join([f'{source_dir}/{barcode}/{f}' for f in fastq_files])} > {output_dir}/{sample_id}.fastq.gz"
+        run_cmd(cmd)
+        result.append(
+            Sample(
+                lab_id=sample_id, 
+                barcode=barcode, 
+                fastq_file=FullPath(f"{output_dir}/{sample_id}.fastq.gz")
+            )
+        )
+    return result
+
+
+def process_fastq_filter(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    threads: int = 4,
+    tool: Literal["chopper"] = "chopper",
+    quality: int = 10,
+    minreadlen: int = 1000,
+) -> None:
+    """Filter fastq reads based on quality and length.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        output_fastq (FullPath): Path to output filtered fastq file.
+        threads (int): Number of threads to use. Defaults to 4.
+        tool (Literal["chopper"]): Filtering tool to use. Defaults to "chopper".
+        quality (int): Minimum quality threshold. Defaults to 10.
+        minreadlen (int): Minimum read length in base pairs. Defaults to 1000.
+    
+    Raises:
+        ValueError: If specified tool is not supported.
+    """
+    if tool == "chopper":
+        job_fastq_filter_chopper(input_fastq, output_fastq, threads, quality, minreadlen)
+    else:
+        raise ValueError(f"Tool {tool} not supported for fastq filtering.")
+
+
+def process_remove_adapters(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    tool: Literal["porechop"] = "porechop",
+    threads: int = 4,
+) -> None:
+    """Remove sequencing adapters from reads.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        output_fastq (FullPath): Path to output adapter-trimmed fastq file.
+        tool (Literal["porechop"]): Adapter removal tool to use. Defaults to "porechop".
+        threads (int): Number of threads to use. Defaults to 4.
+    
+    Raises:
+        ValueError: If specified tool is not supported.
+    """
+    
+    if tool == "porechop":
+        job_remove_adapters_porechop(input_fastq, output_fastq, threads)
+    else:
+        raise ValueError(f"Tool {tool} not supported for adapter removal.")
+
+
+def process_estimate_genome_size(
+    input_fastq: FullPath,
+    tool: Literal["autocycler"] = "autocycler",
+    threads: int = 4,
+) -> int:
+    """Estimate genome size from sequencing reads.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        tool (Literal["autocycler"]): Tool to use for estimation. Defaults to "autocycler".
+        threads (int): Number of threads to use. Defaults to 4.
+    
+    Returns:
+        int: Estimated genome size in base pairs.
+    
+    Raises:
+        ValueError: If specified tool is not supported.
+    """
+    if tool == "autocycler":
+        return job_estimate_genome_size_autocycler(input_fastq, threads)
+    else:
+        raise ValueError(f"Tool {tool} not supported for genome size estimation.")
+    
+def process_downsample_reads_to_target_depth(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    genome_size_estimation_tool: Literal["autocycler"] = "autocycler",
+    read_downsampling_tool: Literal["filtlong"] = "filtlong",
+    target_depth: int = 150,
+    genome_size: int = None,
+    threads: int = 4,
+) -> None:
+    """Downsample reads to achieve a target sequencing depth.
+
+    The genome size is either supplied directly or inferred via the chosen
+    ``genome_size_estimation_tool``. The target number of bases is then computed as
+    ``genome_size * target_depth`` and passed to the requested
+    ``read_downsampling_tool`` (currently only ``filtlong`` is supported).
+
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        output_fastq (FullPath): Path to output downsampled fastq file.
+        genome_size_estimation_tool (Literal["autocycler"]): Tool used when ``genome_size`` is not supplied.
+        read_downsampling_tool (Literal["filtlong"]): Implementation used to subsample reads.
+        target_depth (int): Desired coverage (X). Defaults to 150.
+        genome_size (int | None): Estimated genome size in base pairs, if already known.
+        threads (int): Number of threads to use for estimation steps.
+
+    Raises:
+        ValueError: If the requested downsampling tool is unsupported.
+    """
+    if genome_size is None:
+        genome_size = process_estimate_genome_size(
+            input_fastq, 
+            tool=genome_size_estimation_tool, 
+            threads=threads
+        )
+    target_bases = genome_size * target_depth
+    if read_downsampling_tool == "filtlong":
+        job_downsample_filtlong(input_fastq, output_fastq, target_bases)
+    else:
+        raise ValueError(f"Tool {read_downsampling_tool} not supported for read downsampling.")
+    
+
+def process_assemble(
+    input_fastq: FullPath,
+    output_fasta: str,
+    threads: int = 4,
+    assembler: Literal["autocycler", "flye"] = "autocycler",
+    **kwargs
+) -> None:
+    """Assemble reads into contigs.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        output_fasta (str): Path to output assembly fasta file.
+        threads (int): Number of threads to use. Defaults to 4.
+        assembler (Literal["autocycler", "flye"]): Assembler to use. Defaults to "autocycler".
+        **kwargs: Additional keyword arguments passed to the assembler.
+    
+    Raises:
+        ValueError: If specified assembler is not supported.
+    """
+    if assembler == "autocycler":
+        job_assemble_autocycler(input_fastq, output_fasta, threads, **kwargs)
+    elif assembler == "flye":
+        job_assemble_flye(input_fastq, output_fasta, threads, **kwargs)
+    else:
+        raise ValueError(f"Tool {assembler} not supported for assembly.")
+    
+
+def process_polish(
+        input_reads: str,
+        input_assembly: str,
+        output_assembly: str,
+        polishing_tool: Literal["medaka"] = "medaka",
+        threads: int = 4,
+) -> None:
+    """Polish an assembly to improve accuracy.
+    
+    Uses the specified polishing tool to improve assembly quality by correcting
+    errors using the original reads.
+    
+    Args:
+        input_reads (str): Path to input fastq reads file.
+        input_assembly (str): Path to input assembly fasta file to polish.
+        output_assembly (str): Path where polished assembly will be written.
+        polishing_tool (Literal["medaka"]): Tool to use for polishing. Defaults to "medaka".
+        threads (int): Number of threads to use. Defaults to 4.
+    
+    Raises:
+        ValueError: If specified polishing tool is not supported.
+    """
+    if polishing_tool == "medaka":
+        job_polish_medaka(input_reads, input_assembly, output_assembly, threads)
+    else:
+        raise ValueError(f"Tool {polishing_tool} not supported for polishing.")
