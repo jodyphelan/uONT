@@ -8,6 +8,8 @@ This modular design allows for flexibility in tool choice and makes it easier to
 
 import os
 import logging
+import warnings
+import sys
 import pandas as pd
 from pathogenprofiler_core import run_cmd
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ from .types import FullPath
 class Sample:
     lab_id: str
     barcode: str
+    run_id: str
     fastq_file: FullPath
 
 
@@ -36,6 +39,8 @@ def process_collate_barcode_fastqs(
     source_dir: str,
     output_dir: str,
     sample_sheet: str,
+    dry_run: bool = False,
+    force: bool = False,
 ) -> None:
     """Collate fastq files from barcoded samples and rename according to a sample sheet.
     
@@ -53,12 +58,22 @@ def process_collate_barcode_fastqs(
     Raises:
         FileNotFoundError: If a barcode directory specified in sample sheet doesn't exist.
     """
-    sample_sheet_df = pd.read_excel(sample_sheet)
+    warnings.simplefilter(action='ignore', category=UserWarning)
+    sample_sheet_df = pd.read_excel(sample_sheet, sheet_name="Sample_sheet")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    else:
+        if len(os.listdir(output_dir)) > 0:
+            if not force:
+                logging.error(f"Output directory {output_dir} already exists and is not empty. Use --force to overwrite existing files.")
+                quit(1)
+            
     
     result = []
     for _, row in tqdm(list(sample_sheet_df.iterrows()), desc="Collating fastq files"):
         sample_id = row['Sample_ID']
         barcode = row['Index_barcode_#']
+        run_id = row['Run_ID']
         if not os.path.exists(f'{source_dir}/{barcode}'):
             raise FileNotFoundError(f"Directory for barcode {barcode} not found in {source_dir}. Exiting.")
         fastq_files = os.listdir(f'{source_dir}/{barcode}')
@@ -66,18 +81,28 @@ def process_collate_barcode_fastqs(
             logging.warning(f"No fastq files found for barcode {barcode} in {source_dir}/{barcode}. Skipping.")
             continue
         
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
         
         cmd = f"cat {' '.join([f'{source_dir}/{barcode}/{f}' for f in fastq_files])} > {output_dir}/{sample_id}.fastq.gz"
-        run_cmd(cmd)
+        if dry_run:
+            print(f"Dry run: would execute command: {cmd}")
+            sys.stdout.write(cmd)
+        else:
+            run_cmd(cmd)
         result.append(
             Sample(
                 lab_id=sample_id, 
                 barcode=barcode, 
+                run_id=run_id,
                 fastq_file=FullPath(f"{output_dir}/{sample_id}.fastq.gz")
             )
         )
+        with open(f"{output_dir}/isolates.tsv", "w") as F:
+            
+            for sample in result:
+                F.write(f"{sample.run_id}\t{sample.lab_id}\n")
+        with open(f"{output_dir}/barcodes.tsv", "w") as F:
+            for sample in result:
+                F.write(f"{sample.barcode}\t{sample.lab_id}\n")
     return result
 
 

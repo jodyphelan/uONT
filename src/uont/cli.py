@@ -154,6 +154,16 @@ def cli_uONT():
         required=True,
         help="The sample sheet containing the lab_id and barcode information",
     )
+    prepare_wf_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="If set, the commands to collate fastq files will be printed but not executed",
+    )
+    prepare_wf_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="If set, existing output files will be overwritten during fastq collation",
+    )
 
     ##############################
     ##### Workflow: assemble #####
@@ -428,14 +438,6 @@ def cli_uONT():
 
     config_data = load_yaml_config(args.config) if args.config else None
 
-    if args.command == "workflow" and args.workflow_command == "run-config-workflow":
-        if config_data is None:
-            message = "--config is required when using the run-config-workflow command."
-            logging.error(message)
-            parser.exit(status=2, message=f"{message}\n")
-        run_configured_workflow(config_data)
-        return
-
     if config_data:
         args = update_args_from_config(args, config_data)
 
@@ -444,7 +446,10 @@ def cli_uONT():
             process_collate_barcode_fastqs(
                 args.source_dir, 
                 args.output_dir, 
-                args.sample_sheet
+                args.sample_sheet,
+                args.dry_run,
+                args.force
+
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)
@@ -456,6 +461,8 @@ def cli_uONT():
                 args.min_read_depth,
                 args.max_contigs,
             )
+        elif args.workflow_command == "run-config-workflow":
+            run_configured_workflow(config_data)
         else:
             workflow_parser.print_help()
     
