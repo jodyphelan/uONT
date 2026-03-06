@@ -3,8 +3,10 @@ CLI-related functions for the uONT pipeline
 """
 
 import argparse
+from copy import deepcopy
 import logging
 import os
+import sys
 import rich_argparse
 from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
@@ -17,6 +19,19 @@ from .workflow import (
 )
 
 from .types import FullPath
+
+def load_yaml_config(config_path: str) -> dict:
+    """Load a YAML configuration file and return it as a dictionary.
+
+    Args:
+        config_path (str): Path to the YAML configuration file.
+    Returns:
+        dict: The loaded configuration as a dictionary.
+    """
+    import yaml
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
 
 def file_path(path: str) -> str:
     """Convert a string path to an absolute path.
@@ -31,6 +46,23 @@ def file_path(path: str) -> str:
         logging.error(f"The file \"{path}\" does not exist. Exiting.")
         quit(1)
     return os.path.abspath(path)
+
+def update_args_from_config(args: argparse.Namespace, config: dict) -> argparse.Namespace:
+    updated_args = deepcopy(args)
+    config = load_yaml_config(args.config)
+    print(config)
+    for key, value in config.items():
+        key = key.replace("-", "_")
+        if f"--{key}" not in sys.argv:
+            if hasattr(updated_args, f"{key}"):
+                print(f"Setting {key} from config file: {value}")
+                setattr(updated_args, f"{key}", value)
+            else:
+                logging.warning(f"Config file contains key '{key}' which does not correspond to any command-line argument. Ignoring this config entry.")
+        else:
+            logging.info(f"Command-line argument for {key} takes precedence over config file value: {getattr(updated_args, f'{key}')}")
+            continue
+    return updated_args
 
 
 def initialise_tools(
@@ -63,6 +95,11 @@ def cli_uONT():
         "--debug",
         action="store_true",
         help="Enable debug logging",
+    )
+    parent_parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to YAML configuration file with tool parameters. Command-line arguments will override config file settings.",
     )
 
     parser = argparse.ArgumentParser(
@@ -126,11 +163,6 @@ def cli_uONT():
         type=str,
         required=True,
         help="Output directory for assembly results",
-    )
-    assemble_wf_parser.add_argument(
-        "--sample-name",
-        type=str,
-        help="The name of the sample being processed (used for naming output files)",
     )
     assemble_wf_parser.add_argument(
         "--adapter-removal-tool",
@@ -244,12 +276,6 @@ def cli_uONT():
         type=str, 
         required=True, 
         help="Output directory for assembly results"
-    )
-    job_subparser.add_argument(
-        "--sample-name", 
-        type=str, 
-        required=True, 
-        help="The name of the sample being processed"
     )
     job_subparser.add_argument(
         "--genome-size", 
@@ -384,6 +410,9 @@ def cli_uONT():
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    if args.config:
+        args = update_args_from_config(args,args.config)
 
     if args.command == "workflow":
         if args.workflow_command == "prepare":
