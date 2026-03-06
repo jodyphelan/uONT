@@ -10,6 +10,8 @@ import sys
 import rich_argparse
 from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
+import yaml
+from .types import FullPath
 
 from .process import (
     process_collate_barcode_fastqs,
@@ -19,7 +21,11 @@ from .workflow import (
     run_configured_workflow,
 )
 
-from .types import FullPath
+def _fullpath_constructor(loader: yaml.Loader, node: yaml.Node) -> FullPath:
+    value = loader.construct_scalar(node)
+    return file_path(value)
+
+yaml.SafeLoader.add_constructor("!FullPath", _fullpath_constructor)
 
 def load_yaml_config(config_path: str) -> dict:
     """Load a YAML configuration file and return it as a dictionary.
@@ -29,7 +35,6 @@ def load_yaml_config(config_path: str) -> dict:
     Returns:
         dict: The loaded configuration as a dictionary.
     """
-    import yaml
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file '{config_path}' does not exist")
     with open(config_path, 'r') as f:
