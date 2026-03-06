@@ -56,9 +56,9 @@ def process_collate_barcode_fastqs(
     sample_sheet_df = pd.read_excel(sample_sheet)
     
     result = []
-    for index, row in tqdm(list(sample_sheet_df.iterrows()), desc="Collating fastq files"):
-        sample_id = row['lab_id']
-        barcode = row['barcode']
+    for _, row in tqdm(list(sample_sheet_df.iterrows()), desc="Collating fastq files"):
+        sample_id = row['Sample_ID']
+        barcode = row['Index_barcode_#']
         if not os.path.exists(f'{source_dir}/{barcode}'):
             raise FileNotFoundError(f"Directory for barcode {barcode} not found in {source_dir}. Exiting.")
         fastq_files = os.listdir(f'{source_dir}/{barcode}')

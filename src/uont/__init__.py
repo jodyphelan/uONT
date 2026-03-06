@@ -38,6 +38,7 @@ from .process import (
 from .workflow import (
     wf_assemble,
     make_dir_if_not_exists,
+    run_configured_workflow,
 )
 
 # Import from cli module
@@ -65,4 +66,5 @@ __all__ = [
     "wf_assemble",
     "initialise_tools",
     "make_dir_if_not_exists",
+    "run_configured_workflow",
 ]

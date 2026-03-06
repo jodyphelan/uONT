@@ -16,6 +16,7 @@ from .process import (
 )
 from .workflow import (
     wf_assemble,
+    run_configured_workflow,
 )
 
 from .types import FullPath
@@ -29,8 +30,12 @@ def load_yaml_config(config_path: str) -> dict:
         dict: The loaded configuration as a dictionary.
     """
     import yaml
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file '{config_path}' does not exist")
     with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+    if not isinstance(config, dict):
+        raise ValueError("Configuration file must contain a mapping at the top level")
     return config
 
 def file_path(path: str) -> str:
@@ -49,19 +54,22 @@ def file_path(path: str) -> str:
 
 def update_args_from_config(args: argparse.Namespace, config: dict) -> argparse.Namespace:
     updated_args = deepcopy(args)
-    config = load_yaml_config(args.config)
-    print(config)
     for key, value in config.items():
-        key = key.replace("-", "_")
-        if f"--{key}" not in sys.argv:
-            if hasattr(updated_args, f"{key}"):
-                print(f"Setting {key} from config file: {value}")
-                setattr(updated_args, f"{key}", value)
-            else:
-                logging.warning(f"Config file contains key '{key}' which does not correspond to any command-line argument. Ignoring this config entry.")
-        else:
-            logging.info(f"Command-line argument for {key} takes precedence over config file value: {getattr(updated_args, f'{key}')}")
+        normalized_key = key.replace("-", "_")
+        if f"--{normalized_key}" in sys.argv:
+            logging.info(
+                "Command-line argument for %s takes precedence over config file value %s",
+                normalized_key,
+                value,
+            )
             continue
+        if hasattr(updated_args, normalized_key):
+            setattr(updated_args, normalized_key, value)
+        else:
+            logging.warning(
+                "Config file contains key '%s' which does not correspond to any command-line argument. Ignoring entry.",
+                normalized_key,
+            )
     return updated_args
 
 
@@ -223,6 +231,13 @@ def cli_uONT():
         type=int,
         default=80,
         help="Maximum number of contigs allowed (used in autocycler assembly)",
+    )
+
+    run_config_parser = workflow_subparsers.add_parser(
+        "run-config-workflow",
+        help="Execute a workflow described in a YAML configuration file",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )
 
     ########### END Workflow subparsers ###########
@@ -411,8 +426,18 @@ def cli_uONT():
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    if args.config:
-        args = update_args_from_config(args,args.config)
+    config_data = load_yaml_config(args.config) if args.config else None
+
+    if args.command == "workflow" and args.workflow_command == "run-config-workflow":
+        if config_data is None:
+            message = "--config is required when using the run-config-workflow command."
+            logging.error(message)
+            parser.exit(status=2, message=f"{message}\n")
+        run_configured_workflow(config_data)
+        return
+
+    if config_data:
+        args = update_args_from_config(args, config_data)
 
     if args.command == "workflow":
         if args.workflow_command == "prepare":
