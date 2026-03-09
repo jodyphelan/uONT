@@ -2,7 +2,7 @@
 authors = ["jodyphelan <jodyphelan@outlook.com>"]
 channels = ["conda-forge","bioconda"]
 name = "uONT"
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64","linux-64"]
 version = "0.1.0"
 
 [tasks]
