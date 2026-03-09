@@ -13,8 +13,8 @@ import os
 import logging
 import tempfile
 import shutil
-from pathogenprofiler_core import run_cmd
 import functools
+from .utils import run_cmd
 from .types import FullPath
 
 def run_in_tempdir(func):

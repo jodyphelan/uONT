@@ -11,10 +11,10 @@ import logging
 import warnings
 import sys
 import pandas as pd
-from pathogenprofiler_core import run_cmd
 from dataclasses import dataclass
 from tqdm import tqdm
 from typing import Literal
+from .utils import run_cmd
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
