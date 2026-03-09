@@ -8,6 +8,15 @@ authors = []
 license = "MIT"
 license-files = ["LICENSE"]
 dynamic = ["version", "description"]
+dependencies = [
+    "PyYAML",
+    "openpyxl",
+    "pandas",
+    "pathogenprofiler-core",
+    "rich",
+    "rich-argparse",
+    "tqdm",
+]
 
 [project.scripts]
 uONT = "uont:cli_uONT"
