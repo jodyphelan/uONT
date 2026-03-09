@@ -1,0 +1,52 @@
+{% set name = "uont" %}
+{% set data = load_file_regex(load_file=RECIPE_DIR + "/../src/uont/__init__.py", regex_pattern="__version__\\s*=\\s*['\"]([^'\"]+)['\"]") %}
+{% set version = data.group(1) %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  noarch: python
+  script: python -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - flit-core >=3.11,<4
+  run:
+    - python >=3.10
+    - pyyaml
+    - openpyxl
+    - pandas
+    - pathogenprofiler-core
+    - rich
+    - rich-argparse
+    - tqdm
+
+test:
+  imports:
+    - uont
+  commands:
+    - uONT --help
+
+about:
+  home: https://jodyphelan.github.io/uONT/
+  license: MIT
+  license_family: MIT
+  summary: Pipeline for polishing Oxford Nanopore reads into assemblies.
+  description: |
+    uONT provides CLI workflows and helper processes that filter, downsample,
+    assemble, and polish Oxford Nanopore Technologies sequencing reads into
+    high-quality assemblies using tools like chopper, autocycler, filtlong,
+    flye, and medaka.
+  dev_url: https://jodyphelan.github.io/uONT/
+
+extra:
+  recipe-maintainers:
+    - jodyphelan
