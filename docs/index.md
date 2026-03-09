@@ -12,6 +12,15 @@ uONT is a batteries-included pipeline that covers the complete journey from raw 
 - Genome-size estimation plus Autocycler/Flye assembly support with optional Medaka polishing.
 - Consistent CLI which makes swapping out tools or running individual steps easy for debugging and customization.
 
+## Install 
+
+### With pixi
+
+```
+pixi install 
+pip install git+https://github.com/jodyphelan/uONT.git
+```
+
 ## Quick start
 1. Install dependencies (via `pixi install` or `pip install -e .`).
 2. Run the CLI:
