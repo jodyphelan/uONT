@@ -24,7 +24,6 @@ requirements:
     - pyyaml
     - openpyxl
     - pandas
-    - pathogenprofiler-core
     - rich
     - rich-argparse
     - tqdm
