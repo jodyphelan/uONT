@@ -222,9 +222,9 @@ def job_assemble_autocycler(
     import glob
     sample_files = sorted(glob.glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
     
-    for sample_file in tqdm(sample_files):
+    for sample_file in tqdm(sample_files, desc="Assembling subsamples"):
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
-        logging.info(f"Assembling sample {sample_num} with {assembler}")
+        logging.debug(f"Assembling sample {sample_num} with {assembler}")
         assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads} --genome_size {genome_size}"
         run_cmd(assembly_cmd)
     
