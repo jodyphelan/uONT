@@ -242,7 +242,7 @@ def process_assemble(
         ValueError: If specified assembler is not supported.
     """
     if assembler == "autocycler":
-        job_assemble_autocycler(input_fastq, output_fasta, threads, **kwargs)
+        job_assemble_autocycler(input_fastq, output_fasta, kwargs.get("genome_size"), threads=threads, **kwargs)
     elif assembler == "flye":
         job_assemble_flye(input_fastq, output_fasta, threads, **kwargs)
     else:

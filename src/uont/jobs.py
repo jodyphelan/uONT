@@ -14,6 +14,8 @@ import logging
 import tempfile
 import shutil
 import functools
+import inspect
+from tqdm import tqdm
 from .utils import run_cmd
 from .types import FullPath
 
@@ -23,6 +25,22 @@ def run_in_tempdir(func):
         cwd = os.getcwd()
         tmpdir = tempfile.mkdtemp()
         try:
+            # filter out any arguments in kwargs that are already in args to avoid duplication
+            kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
+
+            # convert any FullPath arguments to absolute paths
+            sig = inspect.signature(func)
+            for param in sig.parameters.values():
+                arg_type = param.annotation if param.annotation is not param.empty else str
+                if arg_type == FullPath:
+                    arg_index = list(sig.parameters).index(param.name)
+                    if arg_index < len(args):
+                        args = list(args)
+                        args[arg_index] = os.path.abspath(args[arg_index])
+                        args = tuple(args)
+                    elif param.name in kwargs:
+                        kwargs[param.name] = os.path.abspath(kwargs[param.name])
+
             os.chdir(tmpdir)
             return func(*args, tmp_dir=tmpdir, **kwargs)
         finally:
@@ -204,7 +222,7 @@ def job_assemble_autocycler(
     import glob
     sample_files = sorted(glob.glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
     
-    for sample_file in sample_files:
+    for sample_file in tqdm(sample_files):
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
         logging.info(f"Assembling sample {sample_num} with {assembler}")
         assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads} --genome_size {genome_size}"
