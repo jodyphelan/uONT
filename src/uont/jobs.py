@@ -247,8 +247,8 @@ def job_assemble_autocycler(
         return None
     
     cluster_dirs = glob.glob(f"{autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*")
-    for cluster_dir in sorted(cluster_dirs):
-        logging.info(f"Processing {os.path.basename(cluster_dir)}")
+    for cluster_dir in tqdm(sorted(cluster_dirs),desc="Processing clusters"):
+        logging.debug(f"Processing {os.path.basename(cluster_dir)}")
         trim_cmd = f"autocycler trim -c {cluster_dir} --threads {threads}"
         run_cmd(trim_cmd)
         resolve_cmd = f"autocycler resolve -c {cluster_dir}"
