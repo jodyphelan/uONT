@@ -96,6 +96,7 @@ def process_collate_barcode_fastqs(
                 fastq_file=FullPath(f"{output_dir}/{sample_id}.fastq.gz")
             )
         )
+    if not dry_run:
         with open(f"{output_dir}/isolates.tsv", "w") as F:
             
             for sample in result:
