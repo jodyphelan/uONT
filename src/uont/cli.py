@@ -247,6 +247,18 @@ def cli_uONT():
         default=80,
         help="Maximum number of contigs allowed (used in autocycler assembly)",
     )
+    assemble_wf_parser.add_argument(
+        "--min-read-length",
+        type=int,
+        default=1000,
+        help="Minimum read length for filtering (used in fastq filtering step)",
+    )
+    assemble_wf_parser.add_argument(
+        "--min-q-score",
+        type=int,
+        default=10,
+        help="Minimum average read quality score for filtering (used in fastq filtering step)",
+    )
 
     run_config_parser = workflow_subparsers.add_parser(
         "run-config-workflow",
@@ -465,6 +477,8 @@ def cli_uONT():
                 args.threads,
                 args.min_read_depth,
                 args.max_contigs,
+                args.min_read_length,
+                args.min_q_score,
             )
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)
