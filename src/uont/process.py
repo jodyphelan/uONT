@@ -84,8 +84,8 @@ def process_collate_barcode_fastqs(
         
         cmd = f"cat {' '.join([f'{source_dir}/{barcode}/{f}' for f in fastq_files])} > {output_dir}/{sample_id}.fastq.gz"
         if dry_run:
-            print(f"Dry run: would execute command: {cmd}")
-            sys.stdout.write(cmd)
+            for d in fastq_files:
+                print(f"{source_dir}/{barcode}/{d} >> {output_dir}/{sample_id}.fastq.gz")
         else:
             run_cmd(cmd)
         result.append(
