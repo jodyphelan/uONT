@@ -76,7 +76,7 @@ def wf_assemble(
     # 2. Filter reads by quality and length
     filtered_fastq: FullPath = FullPath(f"{output_dir}/filtered.fastq.gz")
     # process_fastq_filter(adapter_removed_fastq, filtered_fastq, threads, tools.fastq_filter)
-    process_fastq_filter(input_fastq, filtered_fastq, threads, tools.fastq_filter, min_length=min_read_length, min_quality=min_q_score)
+    process_fastq_filter(input_fastq, filtered_fastq, threads, tools.fastq_filter, minreadlen=min_read_length, quality=min_q_score)
     
     # 3. Estimate genome size and Downsample to target depth
     downsampled_fastq: FullPath = FullPath(f"{output_dir}/downsampled.fastq.gz")
