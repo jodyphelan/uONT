@@ -1,12 +1,6 @@
-"""
-Basic example of a Mkdocs-macros module
-"""
+"""MkDocs macros used to render performance charts."""
 
-import math
-import yaml
-import os
 import pandas as pd
-import plotly.express as px
 import altair as alt
 
 @alt.theme.register("large_font", enable=True)
