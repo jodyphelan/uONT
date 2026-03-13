@@ -6,3 +6,5 @@ src/uont/__pycache__/*
 prepare.ipynb
 current-workflow.sh
 .vscode/*
+__pycache__/*
+docs/__pycache__/*
