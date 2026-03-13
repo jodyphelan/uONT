@@ -4,6 +4,7 @@ CLI-related functions for the uONT pipeline
 
 import argparse
 from copy import deepcopy
+import csv
 import logging
 import os
 import sys
@@ -52,9 +53,9 @@ def file_path(path: str) -> str:
     Returns:
         str: The absolute path.
     """
-    if not os.path.exists(path):
-        logging.error(f"The file \"{path}\" does not exist. Exiting.")
-        quit(1)
+    # if not os.path.exists(path):
+    #     logging.error(f"The file \"{path}\" does not exist. Exiting.")
+    #     quit(1)
     return os.path.abspath(path)
 
 def update_args_from_config(args: argparse.Namespace, config: dict) -> argparse.Namespace:
@@ -77,6 +78,19 @@ def update_args_from_config(args: argparse.Namespace, config: dict) -> argparse.
             )
     return updated_args
 
+def get_genome_sizes() -> dict:
+    """Load genome size estimates from the included CSV file.
+
+    Returns:
+        dict: A mapping of organism names to their estimated genome sizes in base pairs.
+    """
+    genome_sizes_path = os.path.join(os.path.dirname(__file__), "data", "genome-sizes.csv")
+    genome_sizes = {}
+    for row in csv.DictReader(open(genome_sizes_path)):
+        organism = row["organism"].strip()
+        size = int(row["size"])
+        genome_sizes[organism] = size
+    return genome_sizes
 
 def initialise_tools(
     args: argparse.Namespace,
@@ -258,6 +272,12 @@ def cli_uONT():
         type=int,
         default=10,
         help="Minimum average read quality score for filtering (used in fastq filtering step)",
+    )
+    assemble_wf_parser.add_argument(
+        "--organism",
+        type=str,
+        choices=get_genome_sizes().keys(),
+        help="Organism name for genome size (if not provided, will be estimated from the data)",
     )
 
     run_config_parser = workflow_subparsers.add_parser(
@@ -470,6 +490,11 @@ def cli_uONT():
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)
+            if args.organism:
+                genome_size = get_genome_sizes().get(args.organism)
+                logging.debug(f"Using genome size of {genome_size} for organism '{args.organism}'")
+            else:
+                genome_size = None
             wf_assemble(
                 args.input,
                 args.output_dir,
@@ -479,6 +504,7 @@ def cli_uONT():
                 args.max_contigs,
                 args.min_read_length,
                 args.min_q_score,
+                genome_size,
             )
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)

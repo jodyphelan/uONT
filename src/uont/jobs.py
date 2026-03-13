@@ -15,9 +15,22 @@ import tempfile
 import shutil
 import functools
 import inspect
+import time
 from tqdm import tqdm
 from .utils import run_cmd
 from .types import FullPath
+
+
+def timeit(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logging.info(f"Execution time for {func.__name__}: {elapsed_time:.2f} seconds")
+        return result
+    return wrapper
 
 def run_in_tempdir(func):
     @functools.wraps(func)
@@ -48,6 +61,7 @@ def run_in_tempdir(func):
             shutil.rmtree(tmpdir, ignore_errors=True)
     return wrapper
 
+@timeit
 def job_fastq_filter_chopper(
     input_fastq: FullPath,
     output_fastq: FullPath,
@@ -72,6 +86,8 @@ def job_fastq_filter_chopper(
     run_cmd(cmd)
 
 # src/uont/jobs.py
+
+@timeit
 @run_in_tempdir
 def job_assemble_miniasm(
     input_fastq: FullPath, 
@@ -111,6 +127,7 @@ def job_assemble_miniasm(
     # Copy the output assembly to the final destination if needed (e.g., if miniasm writes to a temp file)
     shutil.copy("miniasm_assembly.fasta", output_assembly)
 
+@timeit
 def job_remove_adapters_porechop(
     input_fastq: FullPath,
     output_fastq: FullPath,
@@ -130,6 +147,7 @@ def job_remove_adapters_porechop(
     cmd = f"porechop_abi -t {threads} -i {input_fastq} -o {output_fastq}"
     run_cmd(cmd)
 
+@timeit
 @run_in_tempdir
 def job_assemble_flye(
     input_fastq: FullPath,
@@ -158,6 +176,7 @@ def job_assemble_flye(
     # move final assembly to output location
     shutil.move(f"assembly/assembly.fasta", output_fasta)
 
+@timeit
 @run_in_tempdir
 def job_assemble_autocycler(
     input_fastq: FullPath,
@@ -263,6 +282,7 @@ def job_assemble_autocycler(
     shutil.move(f"{autocycler_output_dir}/autocycler_out/consensus_assembly.fasta", output_fasta)
     logging.info(f"Autocycler assembly workflow completed. Final assembly written to {output_fasta}")
 
+@timeit
 def job_estimate_genome_size_autocycler(
     input_fastq: FullPath,
     threads: int = 4,
@@ -289,6 +309,7 @@ def job_estimate_genome_size_autocycler(
     return int(genome_size)
 
 
+@timeit
 def job_downsample_filtlong(
     input_fastq: FullPath,
     output_fastq: FullPath,
@@ -312,6 +333,7 @@ def job_downsample_filtlong(
     run_cmd(cmd)
 
 
+@timeit
 @run_in_tempdir
 def job_polish_medaka(
         input_reads: FullPath,

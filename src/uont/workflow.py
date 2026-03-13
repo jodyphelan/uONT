@@ -41,6 +41,7 @@ def wf_assemble(
     max_contigs: int = 80,
     min_read_length: int = 1000,
     min_q_score: int = 10,
+    genome_size: int = None,
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
 
@@ -62,6 +63,7 @@ def wf_assemble(
         max_contigs (int): Maximum number of contigs allowed in assembly. Defaults to 80.
         min_read_length (int): Minimum read length for filtering. Defaults to 1000.
         min_q_score (int): Minimum average read quality score for filtering. Defaults to 10.
+        genome_size (int): Estimated genome size in base pairs. If not provided, will be estimated from the data.
     Returns:
         None
     """
@@ -80,7 +82,8 @@ def wf_assemble(
     
     # 3. Estimate genome size and Downsample to target depth
     downsampled_fastq: FullPath = FullPath(f"{output_dir}/downsampled.fastq.gz")
-    genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
+    if genome_size is None:
+        genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
     process_downsample_reads_to_target_depth(
         input_fastq=filtered_fastq, 
         output_fastq=downsampled_fastq, 
