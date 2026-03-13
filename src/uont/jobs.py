@@ -68,7 +68,7 @@ def job_fastq_filter_chopper(
         None
     """
     logging.info(f"Running chopper on {input_fastq} with output {output_fastq} using {threads} threads.")
-    cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} > {output_fastq}"
+    cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} | pigz -c > {output_fastq}"
     run_cmd(cmd)
 
 # src/uont/jobs.py
