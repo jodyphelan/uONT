@@ -10,6 +10,12 @@ uONT workflow assemble --input ~/test-data/fastq/$1.fastq.gz --output $1 --threa
 
 # Performance results
 
+## Overall runtime
+
+This plot shows the total runtime of the uONT assembly workflow for multiple runs on the different samples. The total runtime is measured from the start of the workflow to the completion of the polishing step. This gives an overall sense of how long it takes to run the complete assembly process using uONT.
+
+{{ plot_total_time() }}
+
 ## Task runtime breakdown
 
 This plot shows the runtime of each individual task in the uONT assembly workflow, averaged across multiple runs. The tasks are ordered by the order of execution in the workflow. This breakdown helps identify which steps in the workflow are the most computationally intensive and may benefit from optimization.
