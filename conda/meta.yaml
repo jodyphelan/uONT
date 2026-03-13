@@ -27,6 +27,16 @@ requirements:
     - rich
     - rich-argparse
     - tqdm
+    - chopper
+    - autocycler
+    - filtlong
+    - flye
+    - medaka
+    - miniasm
+    - raven-assembler
+    - pigz
+    - seqkit
+    - minipolish
 
 test:
   imports:
