@@ -1,0 +1,63 @@
+<tool id="uont_assemble" name="uONT assemble" version="0.0.1+galaxy0" profile="24.0">
+  <description>assemble ONT reads into polished contigs</description>
+  <requirements>
+    <requirement type="package" version="0.1.3">uont</requirement>
+  </requirements>
+  <command detect_errors="exit_code"><![CDATA[
+mkdir -p uont_workdir &&
+uONT workflow assemble
+  --input '$input_reads'
+  --assembler-tool '$assembler_tool'
+  --threads '$threads'
+  --min-read-depth '$min_read_depth'
+  --max-contigs '$max_contigs'
+  --output-dir 'uont_workdir'
+  #if str($debug) == "true":
+    --debug
+  #end if
+  > '$run_log' 2>&1 &&
+tar -cf '$workflow_archive' uont_workdir
+  ]]></command>
+  <inputs>
+    <param name="input_reads" type="data" format="fastqsanger,fastqsanger.gz" label="Input ONT reads" />
+    <param name="assembler_tool" type="select" label="Assembler">
+      <option value="autocycler" selected="true">autocycler</option>
+      <option value="flye">flye</option>
+    </param>
+    <param name="threads" type="integer" value="4" min="1" label="Threads" />
+    <param name="min_read_depth" type="integer" value="10" min="1" label="Minimum read depth" help="Used by the autocycler assembly path." />
+    <param name="max_contigs" type="integer" value="80" min="1" label="Maximum contigs" help="Used by the autocycler assembly path." />
+    <param name="debug" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Enable debug logging" />
+  </inputs>
+  <outputs>
+    <data name="polished_assembly" format="fasta" from_work_dir="uont_workdir/polished_assembly.fasta" label="${tool.name} on ${on_string}: polished assembly" />
+    <data name="raw_assembly" format="fasta" from_work_dir="uont_workdir/raw_assembly.fasta" label="${tool.name} on ${on_string}: raw assembly" />
+    <data name="filtered_reads" format="fastqsanger.gz" from_work_dir="uont_workdir/filtered.fastq.gz" label="${tool.name} on ${on_string}: filtered reads" />
+    <data name="downsampled_reads" format="fastqsanger.gz" from_work_dir="uont_workdir/downsampled.fastq.gz" label="${tool.name} on ${on_string}: downsampled reads" />
+    <data name="run_log" format="txt" label="${tool.name} on ${on_string}: run log" />
+    <data name="workflow_archive" format="tar" label="${tool.name} on ${on_string}: workflow archive" />
+  </outputs>
+  <help><![CDATA[
+This tool wraps `uONT workflow assemble`.
+
+Inputs:
+
+- One ONT FASTQ or FASTQ.GZ dataset
+- Choice of assembler (`autocycler` or `flye`)
+- Thread count
+- Optional autocycler tuning parameters
+
+Outputs:
+
+- `polished_assembly.fasta`
+- `raw_assembly.fasta`
+- `filtered.fastq.gz`
+- `downsampled.fastq.gz`
+- A combined run log
+- A tar archive of the full workflow directory
+
+This wrapper depends on the `uont` conda package from the `jodyphelan` channel.
+The local Galaxy config has been updated to include that channel for dependency
+resolution.
+  ]]></help>
+</tool>
