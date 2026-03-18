@@ -8,3 +8,4 @@ current-workflow.sh
 .vscode/*
 __pycache__/*
 docs/__pycache__/*
+dev-testing/*
