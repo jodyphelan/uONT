@@ -16,9 +16,14 @@ import shutil
 import functools
 import inspect
 import time
+import pysam
+import numpy as np
 from tqdm import tqdm
+import subprocess as sp
+from typing import Tuple
 from .utils import run_cmd
 from .types import FullPath
+from .qc import Fasta
 
 
 def timeit(func):
@@ -39,8 +44,25 @@ def run_in_tempdir(func):
         tmpdir = tempfile.mkdtemp()
         try:
             # filter out any arguments in kwargs that are already in args to avoid duplication
-            kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
+            # move kwargs to args based on function signature
+            sig = inspect.signature(func)
+            # find positional arguments in kwargs and move them to args
 
+            if len(args)==0:
+    
+                for param in sig.parameters.values():
+                    if param.name=='kwargs':
+                        continue
+                    if param.default is inspect.Parameter.empty:
+                        new_args[param.name] = kwargs.pop(param.name)
+                    else:
+                        new_kwargs[param.name] = kwargs.get(param.name, param.default)
+
+            else:
+                new_args = args
+                new_kwargs = kwargs
+
+            kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
             # convert any FullPath arguments to absolute paths
             sig = inspect.signature(func)
             for param in sig.parameters.values():
@@ -183,7 +205,7 @@ def job_assemble_autocycler(
     output_fasta: FullPath,
     genome_size: int,
     threads: int = 4,
-    assembler: str = "miniasm",
+    assemblers: Tuple[str] = ("flye", "miniasm"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
     **kwargs
@@ -207,7 +229,7 @@ def job_assemble_autocycler(
         output_fasta (FullPath): Destination path for the consensus FASTA file.
         genome_size (int): Estimated genome size in base pairs.
         threads (int): Number of threads to use. Defaults to 4.
-        assembler (str): Assembler helper to use (``miniasm``, ``flye``, ``raven``).
+        assemblers (Tuple[str]): Assemblers to use (``miniasm``, ``flye``, ``raven``). Defaults to ``("flye", "miniasm")``.
         min_read_depth (int): Minimum read depth for subsampling. Defaults to 10.
         max_contigs (int): Maximum number of contigs allowed. Defaults to 80.
         kwargs (dict[str, object]): Extra parameters accepted for interface symmetry.
@@ -234,14 +256,15 @@ def job_assemble_autocycler(
     run_cmd(qc_cmd)
     
     # 3. Make assemblies for each subsampled read
-    logging.info(f"Creating assemblies using {assembler}")
+    logging.info(f"Creating assemblies using {assemblers}")
     os.makedirs(f"{autocycler_output_dir}/autocycler_assemblies", exist_ok=True)
     
     # Get list of sample files
     import glob
     sample_files = sorted(glob.glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
     
-    for sample_file in tqdm(sample_files, desc="Assembling subsamples"):
+    combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
+    for sample_file, assembler in tqdm(combinations, desc="Assembling subsamples"):
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
         logging.debug(f"Assembling sample {sample_num} with {assembler}")
         assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads} --genome_size {genome_size}"
@@ -281,6 +304,31 @@ def job_assemble_autocycler(
     # Move final assembly to output location
     shutil.move(f"{autocycler_output_dir}/autocycler_out/consensus_assembly.fasta", output_fasta)
     logging.info(f"Autocycler assembly workflow completed. Final assembly written to {output_fasta}")
+
+@timeit
+def job_estimate_genome_size_lrge(
+    input_fastq: FullPath,
+    threads: int = 4,
+):
+    """Estimate genome size using lrge.
+
+    Uses lrge's estimate_genome_size command to estimate the genome size
+    from the input reads.
+
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        threads (int): Number of threads to use. Defaults to 4.
+
+    Returns:
+        int: Estimated genome size in base pairs.
+    """
+    logging.info(f"Running lrge genome size estimation on {input_fastq} using {threads} threads.")
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        cmd = f"lrge {input_fastq} -t {threads} -o {tmp.name}"
+        run_cmd(cmd)
+        genome_size = tmp.read().decode().strip()
+        logging.info(f"Estimated genome size: {genome_size}")
+    return int(genome_size)
 
 @timeit
 def job_estimate_genome_size_autocycler(
@@ -366,12 +414,155 @@ def job_polish_medaka(
     os.makedirs(tmp_dir1, exist_ok=True)
     # Round 1: Polish original assembly
     cmd_round1 = f"medaka_consensus -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
-    run_cmd(cmd_round1)
+    # run command and check check stdout for "ERROR"
+    result1 = sp.run(cmd_round1, shell=True, capture_output=True, text=True)
+    bacteria_model_working = True
+    if result1.returncode != 0:
+        if "ERROR: --bacteria was specified but input data was not compatible." in result1.stdout:
+            logging.warning("Medaka round 1 failed with --bacteria model. Retrying without --bacteria flag.")
+            bacteria_model_working = False
+            cmd_round1 = f"medaka_consensus -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
+            run_cmd(cmd_round1)
+        else:
+            logging.error(f"Medaka round 1 failed with error:\n{result1.stdout}")
+            raise ValueError("Medaka polishing failed in round 1.")
 
     tmp_dir2 = os.path.join(tmp_dir, "round2")
     os.makedirs(tmp_dir2, exist_ok=True)
-    cmd_round2 = f"medaka_consensus -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
+    if bacteria_model_working:
+        logging.info(f"Running medaka polishing (round 2) with bacteria model for {tmp_dir1}/consensus.fasta")
+        cmd_round2 = f"medaka_consensus -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
+    else:
+        cmd_round2 = f"medaka_consensus -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
     run_cmd(cmd_round2)
 
     shutil.move(f"{tmp_dir2}/consensus.fasta", output_assembly)
     logging.info(f"Medaka polishing completed. Output: {output_assembly}")
+
+@run_in_tempdir
+def job_map_reads_minimap2(
+    input_reads: FullPath,
+    input_assembly: FullPath,
+    output_bam: FullPath,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Map reads to an assembly using minimap2 and output sorted BAM.
+    
+    Args:
+        input_reads (FullPath): Path to input fastq reads file.
+        input_assembly (FullPath): Path to input assembly fasta file.
+        output_bam (FullPath): Path where sorted BAM file will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Mapping reads to assembly with minimap2. Reads: {input_reads}, Assembly: {input_assembly}, Output BAM: {output_bam}")
+    cmd = f"minimap2 -ax map-ont -t {threads} {input_assembly} {input_reads} | samtools sort -o {output_bam}"
+    run_cmd(cmd)
+    cmd = f"samtools index {output_bam}"
+    run_cmd(cmd)
+
+def job_mask_low_dp_regions(
+    input_fasta: FullPath,
+    bed_file: FullPath,
+    output_fasta: FullPath
+) -> None:
+    """Mask low depth regions in an assembly based on a BED file.
+    
+    Replaces sequences in the input FASTA with Ns at positions specified in the BED file.
+    
+    Args:
+        input_fasta (FullPath): Path to input assembly fasta file.
+        bed_file (FullPath): Path to BED file containing regions to mask.
+        output_fasta (FullPath): Path where masked assembly fasta will be written.
+
+    Returns:
+        None
+    """
+    logging.info(f"Masking low depth regions in {input_fasta} using BED file {bed_file}. Output: {output_fasta}")
+    refseq = pysam.FastaFile(input_fasta)
+    seqname = refseq.references[0]
+    sequence = list(refseq.fetch(seqname))
+    
+    for line in open(bed_file):
+        row = line.strip().split("\t")
+        start, end = int(row[1]), int(row[2])
+        for i in range(start, end):
+            sequence[i] = "N"
+    
+    with open(output_fasta, "w") as O:
+        O.write(f">{seqname}\n{''.join(sequence)}\n")
+
+
+
+
+@run_in_tempdir
+def generate_low_dp_mask(
+    bam: FullPath,
+    ref: FullPath,
+    outfile: FullPath,
+    min_dp: int = 10,
+    **kwargs
+) -> None:
+    """
+    Generate a BED file of low depth regions based on a BAM file and reference FASTA.
+    Args:
+        bam (FullPath): Path to input BAM file with reads mapped to reference.
+        ref (FullPath): Path to reference FASTA file.
+        outfile (FullPath): Path where output BED file will be written.
+        min_dp (int): Minimum read depth threshold for masking. Defaults to 10.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    refseq = pysam.FastaFile(ref)
+    seqname = refseq.references[0]
+    dp = np.zeros(refseq.get_reference_length(seqname))
+    tmp_depth_file = f"{outfile}.depth"
+    cmd = f"samtools depth {bam} > {tmp_depth_file}"
+    run_cmd(cmd)
+    for l in open(tmp_depth_file):
+        row = l.strip().split("\t")
+        dp[int(row[1])-1] = int(row[2])
+
+    masked_positions = []
+    for i, d in enumerate(dp):
+        if d < min_dp:
+            masked_positions.append(i)
+
+    with open(outfile,"w") as O:
+        for i in masked_positions:
+            O.write(f"{seqname}\t{i}\t{i+1}\n")
+
+    shutil.move(outfile, f"{outfile}")
+
+
+
+def job_qc_python(
+    input_fasta: FullPath,
+    output_qc: FullPath,
+    sample_id: str = None,
+    **kwargs
+) -> None:
+    """Run QC on reads using a Python-based approach.
+    
+    This is a placeholder for a custom QC implementation that could be developed
+    in Python, potentially using libraries like Biopython or SeqIO to analyze
+    read quality and length distributions, and output a QC report.
+
+    Args:
+        input_fasta (FullPath): Path to input fasta file with reads.
+        output_qc (FullPath): Path where QC report will be written.
+        sample_id (str): Sample identifier. Defaults to None.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_qc}")
+    fasta = Fasta(input_fasta, sample_id=sample_id)
+    fasta.write_qc_report(output_file=output_qc)

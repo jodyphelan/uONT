@@ -5,8 +5,11 @@ Workflow functions for the uONT pipeline
 import os
 import logging
 from importlib import import_module
+import shutil
 from types import SimpleNamespace
 from typing import Any, Dict
+
+from .jobs import generate_low_dp_mask, job_map_reads_minimap2, job_mask_low_dp_regions
 from .types import FullPath
 
 from .process import (
@@ -42,6 +45,7 @@ def wf_assemble(
     min_read_length: int = 1000,
     min_q_score: int = 10,
     genome_size: int = None,
+    copy_final_assembly: str = None,
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
 
@@ -64,6 +68,7 @@ def wf_assemble(
         min_read_length (int): Minimum read length for filtering. Defaults to 1000.
         min_q_score (int): Minimum average read quality score for filtering. Defaults to 10.
         genome_size (int): Estimated genome size in base pairs. If not provided, will be estimated from the data.
+        copy_final_assembly (str): Path to copy the final polished assembly. Defaults to None.
     Returns:
         None
     """
@@ -115,7 +120,17 @@ def wf_assemble(
         threads=threads,        
         polishing_tool=tools.polishing,
     )
-    
+
+    # clean up intermediate files
+    os.remove(adapter_removed_fastq)
+    os.remove(filtered_fastq)
+    os.remove(raw_assembly_file)
+
+    if copy_final_assembly:
+        final_assembly_file = copy_final_assembly
+        shutil.copy(polished_assembly_file, final_assembly_file)
+        logging.info(f"Final assembly copied to {final_assembly_file}")
+
     logging.info(f"Assembly workflow completed. Final assembly: {polished_assembly_file}")
 
 
@@ -179,3 +194,65 @@ def _resolve_step_callable(step_type: str, qualified_name: str):
     if not hasattr(module, qualified_name):
         raise ValueError(f"Configured {step_type} '{qualified_name}' does not exist")
     return getattr(module, qualified_name)
+
+def wf_consensus(
+    reference_sequence: FullPath,
+    input_reads: FullPath,
+    output_dir: str,
+    tools: SimpleNamespace,
+    threads: int = 4,
+    min_read_depth: int = 10,
+) -> None:
+    """Run a consensus generation workflow on an assembly.
+
+    Workflow steps:
+        1. Create the output directory (if needed).
+        2. Polish the assembly using the selected polishing tool.
+
+    Args:
+        reference_sequence (FullPath): Path to the reference sequence fasta file.
+        input_reads (FullPath): Path to the input reads fastq file.
+        output_dir (str): Base output directory for workflow outputs.
+        tools (SimpleNamespace): Tool selections (consensus).
+        threads (int): Number of threads to use. Defaults to 4.
+        min_read_depth (int): Minimum read depth for polishing subsampling. Defaults to 10.
+    Returns:
+        None
+    """
+    logging.info(f"Starting consensus generation with reference {reference_sequence} and reads {input_reads}")
+    
+    make_dir_if_not_exists(f"{output_dir}/")
+    
+    # Polish assembly
+    polished_assembly_file = f"{output_dir}/consensus.fasta"
+    process_polish(
+        input_reads=input_reads,
+        input_assembly=reference_sequence,
+        output_assembly=polished_assembly_file,
+        threads=threads,        
+        polishing_tool=tools.consensus,
+    )
+    bam_file = f"{output_dir}/consensus_alignment.bam"
+    job_map_reads_minimap2(
+        input_reads,
+        polished_assembly_file,
+        bam_file,
+        threads=threads,
+    )
+
+    low_depth_bed_file = f"{output_dir}/low_depth_regions.bed"
+    generate_low_dp_mask(
+        bam_file,
+        polished_assembly_file,
+        low_depth_bed_file,
+        min_depth=min_read_depth,
+    )
+
+    masked_consensus = f"{output_dir}/final_consensus.fasta"
+    job_mask_low_dp_regions(
+        input_fasta=polished_assembly_file,
+        bed_file=low_depth_bed_file,
+        output_fasta=masked_consensus,
+    )
+    
+    logging.info(f"Consensus generation workflow completed. Final consensus: {masked_consensus}")

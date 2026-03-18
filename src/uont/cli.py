@@ -19,6 +19,7 @@ from .process import (
 )
 from .workflow import (
     wf_assemble,
+    wf_consensus,
     run_configured_workflow,
 )
 
@@ -109,6 +110,15 @@ def initialise_tools(
             setattr(tools, key.replace("_tool", ""), value)
     return tools
 
+def list_reference_sequences() -> list:
+    try:
+        from uont_data import list_reference_sequences
+        return list_reference_sequences()
+    except:
+        logging.warning("Could not import list_reference_sequences from uont_data. Returning empty list.")
+        return []
+    
+reference_sequences = list_reference_sequences()
 
 def cli_uONT():
     """Main entry point for the uONT CLI."""
@@ -218,8 +228,8 @@ def cli_uONT():
     assemble_wf_parser.add_argument(
         "--genome-size-estimation-tool",
         type=str,
-        default="autocycler",
-        choices=["autocycler"],
+        default="lrge",
+        choices=["lrge","autocycler"],
         help="The tool to use for genome size estimation",
     )
     assemble_wf_parser.add_argument(
@@ -278,6 +288,63 @@ def cli_uONT():
         type=str,
         choices=get_genome_sizes().keys(),
         help="Organism name for genome size (if not provided, will be estimated from the data)",
+    )
+    assemble_wf_parser.add_argument(
+        "--copy-final-assembly", 
+        type=FullPath, 
+        help="Copy final assembly to path"
+    )
+
+    ########## END Workflow: assemble ##########
+
+    consensus_wf_parser = workflow_subparsers.add_parser(
+        "consensus",
+        help="Generate a consensus sequence from an assembly and the raw reads",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
+    consensus_input_group = consensus_wf_parser.add_mutually_exclusive_group(required=True)
+    consensus_input_group.add_argument(
+        "--accession",
+        choices=list(reference_sequences),
+        type=str,
+        help="Reference accession to use as input assembly",
+    )
+    consensus_input_group.add_argument(
+        "--fasta",
+        type=str,
+        help="Input assembly fasta file",
+    )
+    consensus_wf_parser.add_argument(
+        "--input-reads",
+        type=str,
+        required=True,
+        help="Input fastq file containing the raw reads",
+    )
+    consensus_wf_parser.add_argument(
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Output directory for consensus results",
+    )
+    consensus_wf_parser.add_argument(
+        "--consensus-tool",
+        type=str,
+        default="medaka",
+        choices=["medaka"],
+        help="The tool to use for generating the consensus sequence",
+    )
+    consensus_wf_parser.add_argument(
+        "--threads",
+        type=int,
+        default=4,
+        help="The number of threads to use for consensus generation",
+    )
+    consensus_wf_parser.add_argument(
+        "--min-read-depth",
+        type=int,
+        default=10,
+        help="Minimum read depth for subsampling (used in autocycler assembly)",
     )
 
     run_config_parser = workflow_subparsers.add_parser(
@@ -506,16 +573,32 @@ def cli_uONT():
                 args.min_q_score,
                 genome_size,
             )
+        elif args.workflow_command == "consensus":
+            tools = initialise_tools(args)
+
+            reference_sequence = reference_sequences.get(args.accession) if args.accession else args.fasta
+            
+            wf_consensus(
+                reference_sequence = reference_sequence,
+                input_reads=args.input_reads,
+                output_dir = args.output_dir,
+                tools = tools,
+                threads = args.threads,
+                min_read_depth = args.min_read_depth,
+            )
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)
         else:
             workflow_parser.print_help()
     
     elif args.command == "job":
+
         if args.job_command:
+
             from . import jobs as jobs_module
             func_name = f"job_{args.job_command}".replace("-", "_")
             if hasattr(jobs_module, func_name):
+
                 func = getattr(jobs_module, func_name)
                 import inspect
                 sig = inspect.signature(func)
@@ -524,6 +607,7 @@ def cli_uONT():
                     for param in sig.parameters.values()
                     if param.name != "kwargs"
                 }
+
                 func(**kwargs)
             else:
                 job_parser.print_help()
@@ -544,9 +628,8 @@ def cli_uONT():
                     for param in sig.parameters.values()
                     if param.name != "kwargs"
                 }
-                result = func(**kwargs)
-                if result is not None:
-                    print(result)
+                func(**kwargs)
+                
             else:
                 process_parser.print_help()
         else:

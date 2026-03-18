@@ -23,6 +23,7 @@ from .jobs import (
     job_remove_adapters_porechop, 
     job_downsample_filtlong,
     job_polish_medaka,
+    job_estimate_genome_size_lrge,
 )
 from .types import FullPath
 
@@ -85,7 +86,7 @@ def process_collate_barcode_fastqs(
         cmd = f"cat {' '.join([f'{source_dir}/{barcode}/{f}' for f in fastq_files])} > {output_dir}/{sample_id}.fastq.gz"
         if dry_run:
             for d in fastq_files:
-                print(f"{source_dir}/{barcode}/{d} >> {output_dir}/{sample_id}.fastq.gz")
+                sys.stdout.write(f"{source_dir}/{barcode}/{d} >> {output_dir}/{sample_id}.fastq.gz\n")
         else:
             run_cmd(cmd)
         result.append(
@@ -178,6 +179,8 @@ def process_estimate_genome_size(
     """
     if tool == "autocycler":
         return job_estimate_genome_size_autocycler(input_fastq, threads)
+    elif tool == "lrge":
+        return job_estimate_genome_size_lrge(input_fastq, threads)
     else:
         raise ValueError(f"Tool {tool} not supported for genome size estimation.")
     
@@ -226,7 +229,7 @@ def process_assemble(
     input_fastq: FullPath,
     output_fasta: str,
     threads: int = 4,
-    assembler: Literal["autocycler", "flye"] = "autocycler",
+    assembler: Literal["autocycler", "flye"] = "flye",
     **kwargs
 ) -> None:
     """Assemble reads into contigs.
@@ -235,7 +238,7 @@ def process_assemble(
         input_fastq (FullPath): Path to input fastq file.
         output_fasta (str): Path to output assembly fasta file.
         threads (int): Number of threads to use. Defaults to 4.
-        assembler (Literal["autocycler", "flye"]): Assembler to use. Defaults to "autocycler".
+        assembler (Literal["autocycler", "flye"]): Assembler to use. Defaults to "flye".
         **kwargs: Additional keyword arguments passed to the assembler.
     
     Raises:
@@ -275,3 +278,30 @@ def process_polish(
         job_polish_medaka(input_reads, input_assembly, output_assembly, threads)
     else:
         raise ValueError(f"Tool {polishing_tool} not supported for polishing.")
+
+
+def process_consensus(
+        input_reads: str,
+        input_assembly: str,
+        output_assembly: str,
+        polishing_tool: Literal["medaka"] = "medaka",
+        threads: int = 4,
+) -> None:
+    """Generate a consensus sequence from an assembly and reads.
+    
+    This function is currently identical to process_polish, but is conceptually
+    distinct in that it represents the final step of the workflow where a polished
+    consensus sequence is produced. In future, this function could be extended to
+    include additional steps such as circularization or manual curation before polishing.
+    
+    Args:
+        input_reads (str): Path to input fastq reads file.
+        input_assembly (str): Path to input assembly fasta file to generate consensus from.
+        output_assembly (str): Path where consensus assembly will be written.
+        polishing_tool (Literal["medaka"]): Tool to use for polishing. Defaults to "medaka".
+        threads (int): Number of threads to use. Defaults to 4.
+    
+    Raises:
+        ValueError: If specified polishing tool is not supported.
+    """
+    process_polish(input_reads, input_assembly, output_assembly, polishing_tool, threads)
