@@ -3,6 +3,7 @@
 from typing import NewType
 
 FullPath = NewType("FullPath", str)
+FullFuturePath = NewType("FullFuturePath", str)
 
 
 class ReferenceSequence:

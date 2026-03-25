@@ -9,6 +9,7 @@ for the CLI interface, allowing users to run specific steps directly from the
 command line if desired.
 """
 
+import json
 import os
 import logging
 import tempfile
@@ -49,7 +50,8 @@ def run_in_tempdir(func):
             # find positional arguments in kwargs and move them to args
 
             if len(args)==0:
-    
+                new_args = {}
+                new_kwargs = {}
                 for param in sig.parameters.values():
                     if param.name=='kwargs':
                         continue
@@ -57,11 +59,12 @@ def run_in_tempdir(func):
                         new_args[param.name] = kwargs.pop(param.name)
                     else:
                         new_kwargs[param.name] = kwargs.get(param.name, param.default)
-
+                args = tuple(new_args.values())
+                kwargs = new_kwargs
             else:
                 new_args = args
                 new_kwargs = kwargs
-
+            
             kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
             # convert any FullPath arguments to absolute paths
             sig = inspect.signature(func)
@@ -566,3 +569,215 @@ def job_qc_python(
     logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_qc}")
     fasta = Fasta(input_fasta, sample_id=sample_id)
     fasta.write_qc_report(output_file=output_qc)
+
+
+
+def job_variant_calling_bcftools(
+    reference_fasta: FullPath,
+    input_bam: FullPath,
+    output_vcf: FullPath,
+    **kwargs
+) -> None:
+    """Generate a VCF file using bcftools.
+    
+    Args:
+        reference_fasta (FullPath): Path to reference FASTA file.
+        input_bam (FullPath): Path to input BAM file with reads mapped to reference.
+        output_vcf (FullPath): Path where output VCF file will be written.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Generating VCF with bcftools. BAM: {input_bam}, Reference: {reference_fasta}, Output VCF: {output_vcf}")
+    cmd = f"bcftools mpileup -a AD -f {reference_fasta} {input_bam} | bcftools call -mv -Oz -o {output_vcf}"
+    run_cmd(cmd)
+    cmd = f"bcftools index {output_vcf}"
+    run_cmd(cmd)
+
+
+def job_consensus_bcftools(
+    reference_fasta: FullPath,
+    input_fastq: FullPath,
+    output_fasta: FullPath,
+    **kwargs
+) -> None:
+    """Generate a consensus FASTA from a VCF file using bcftools.
+    
+    Args:
+        reference_fasta (FullPath): Path to reference FASTA file.
+        input_vcf (FullPath): Path to input VCF file with variants.
+        output_fasta (FullPath): Path where output consensus FASTA will be written.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    bam_filename = f"{output_fasta}.bam"
+    job_map_reads_minimap2(
+        input_reads=input_fastq,
+        input_assembly=reference_fasta,
+        output_bam=bam_filename,
+        threads=kwargs.get("threads", 4)
+    )
+    vcf_filename = f"{output_fasta}.vcf.gz"
+    job_variant_calling_bcftools(
+        reference_fasta=reference_fasta,
+        input_bam=bam_filename,
+        output_vcf=vcf_filename,
+    )
+    annotated_vcf_filename = f"{output_fasta}.annotated.vcf.gz"
+    job_vcf_annotate_maaf(
+        input_vcf=vcf_filename,
+        output_vcf=annotated_vcf_filename
+    )
+    filtered_vcf_filename = f"{output_fasta}.filtered.vcf.gz"
+    cmd = f"bcftools view -i 'INFO/MAAF>0.5' {annotated_vcf_filename} -Oz -o {filtered_vcf_filename}"
+    run_cmd(cmd)
+    cmd = f"bcftools index {filtered_vcf_filename}"
+    run_cmd(cmd)
+    logging.info(f"Generating consensus FASTA with bcftools. VCF: {filtered_vcf_filename}, Reference: {reference_fasta}, Output FASTA: {output_fasta}")
+    cmd = f"bcftools consensus -f {reference_fasta} {filtered_vcf_filename} > {output_fasta}"
+    run_cmd(cmd)
+
+def job_consensus_medaka(
+    input_reads: FullPath,
+    input_assembly: FullPath,
+    output_assembly: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    """Generate a consensus FASTA from an assembly and reads using medaka.
+    
+    Args:
+        input_reads (FullPath): Path to input fastq reads file.
+        input_assembly (FullPath): Path to input assembly fasta file to generate consensus from.
+        output_assembly (FullPath): Path where consensus assembly will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    job_polish_medaka(
+        input_reads=input_reads,
+        input_assembly=input_assembly,
+        output_assembly=output_assembly,
+        threads=threads,
+        **kwargs
+    )
+
+def job_vcf_annotate_maaf(
+    input_vcf: str,
+    output_vcf: str
+):
+
+    vcf_in = pysam.VariantFile(input_vcf, "r")
+    header = vcf_in.header
+
+    # add float INFO field
+    tag = {'ID':'MAAF','Number':'1','Type':'Float','Description':'Major Alternative Allele Frequency'}
+    header.add_meta('INFO',items=tag.items())
+
+
+    vcf_out = pysam.VariantFile(output_vcf, "w", header=header)
+    for var in vcf_in:
+        # short variant
+        if 'AD' in var.samples[0]:
+            if var.samples[0]['AD'] == (None,):
+                maaf = 0
+            else:
+            # calculate MAF from FMT/AD
+                maaf = max(var.samples[0]['AD'][1:])/sum(var.samples[0]['AD'])
+
+        elif 'SVTYPE' in var.info:
+            # long variant
+            # use DR:DV:RR:RV
+            total_reads = var.samples[0]['DR'] + var.samples[0]['DV'] + var.samples[0]['RR'] + var.samples[0]['RV']
+            if var.samples[0]['RR'] == (None,):
+                maaf = 0
+            elif total_reads==0:
+                maaf = 0
+            else:
+                maaf = (var.samples[0]['DV'] + var.samples[0]['RV'])/total_reads
+        else:
+            # panic
+            raise ValueError("No AD or SVTYPE in INFO field")
+        var.info['MAAF'] = maaf
+        vcf_out.write(var)
+
+    vcf_in.close()
+    vcf_out.close()
+
+def job_mapping_stats_flagstat(
+    input_bam: FullPath,
+    output_json: FullPath
+):
+    """Generate mapping statistics in JSON format using samtools flagstat.
+    
+    Args:
+        input_bam (FullPath): Path to input BAM file with reads mapped to reference.
+        output_json (FullPath): Path where output JSON file with mapping stats will be written.
+    Returns:
+        None
+    """
+    logging.info(f"Generating mapping statistics with samtools flagstat. Input BAM: {input_bam}, Output JSON: {output_json}")
+    cmd = f"samtools flagstat {input_bam} -O json > {output_json}"
+    run_cmd(cmd)
+
+def extract_flagstat_stats(
+    input_json: FullPath
+) -> dict:
+    """Extract relevant statistics from a samtools flagstat JSON output.
+    
+    Args:
+        input_json (FullPath): Path to input JSON file generated by samtools flagstat.
+    Returns:
+        dict: Dictionary containing extracted statistics such as total reads, mapped reads, and percentage mapped.
+    """
+    with open(input_json) as f:
+        data = json.load(f)
+        total = data["QC-passed reads"]["total"]
+        mapped = data["QC-passed reads"]["mapped"]
+        percent_mapped = mapped/total*100 if total > 0 else 0
+        return {
+            'total': total,
+            'mapped': mapped,
+            '% mapped': percent_mapped
+        }
+
+def job_collate_flagstat_jsons(
+    input_directories: list[FullPath],
+    output_csv: FullPath
+):
+
+# extract the "QC-passed reads": ["total","mapped"]  from each json and average them across all jsons, then write to output_json
+    results = []
+    for dir in input_directories:
+        json_path = os.path.join(dir, "flagstat.json")
+        stats = extract_flagstat_stats(json_path)
+        sample_name = os.path.basename(dir)
+        results.append({
+            'sample_id': sample_name,
+            'total': stats['total'],
+            'mapped': stats['mapped'],
+            '% mapped': stats['% mapped']
+        })
+
+    with open(output_csv, "w") as O:
+        O.write("sample_id,total,mapped,% mapped\n")
+        for result in results:
+            O.write(f"{result['sample_id']},{result['total']},{result['mapped']},{result['% mapped']:.2f}\n")
+
+def job_collate_fasta_consensus(
+    input_directories: list[FullPath],
+    output_fasta: FullPath
+):
+    with open(output_fasta, "w") as O:
+        for dir in input_directories:
+            fasta_path = os.path.join(dir, "consensus.fasta")
+            sample_name = os.path.basename(dir)
+            with pysam.FastaFile(fasta_path) as fasta:
+                for record in fasta.references:
+                    seq = fasta.fetch(record)
+                    O.write(f">{sample_name} {record}\n{seq}\n")    

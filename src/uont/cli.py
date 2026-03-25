@@ -19,6 +19,7 @@ from .process import (
 )
 from .workflow import (
     wf_assemble,
+    wf_collate_amplicon_results,
     wf_consensus,
     run_configured_workflow,
 )
@@ -44,6 +45,28 @@ def load_yaml_config(config_path: str) -> dict:
     if not isinstance(config, dict):
         raise ValueError("Configuration file must contain a mapping at the top level")
     return config
+
+def load_path_list_file(path_list_file: str) -> list[str]:
+    """Load newline-delimited paths from a text file.
+
+    Empty lines and lines starting with '#' are ignored.
+    """
+    if not os.path.exists(path_list_file):
+        raise FileNotFoundError(f"Input directories file '{path_list_file}' does not exist")
+
+    paths: list[str] = []
+    with open(path_list_file, "r") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            paths.append(file_path(line))
+
+    if not paths:
+        raise ValueError(
+            f"Input directories file '{path_list_file}' does not contain any usable paths"
+        )
+    return paths
 
 def file_path(path: str) -> str:
     """Convert a string path to an absolute path.
@@ -330,8 +353,8 @@ def cli_uONT():
     consensus_wf_parser.add_argument(
         "--consensus-tool",
         type=str,
-        default="medaka",
-        choices=["medaka"],
+        default="bcftools",
+        choices=["medaka","bcftools"],
         help="The tool to use for generating the consensus sequence",
     )
     consensus_wf_parser.add_argument(
@@ -344,7 +367,32 @@ def cli_uONT():
         "--min-read-depth",
         type=int,
         default=10,
-        help="Minimum read depth for subsampling (used in autocycler assembly)",
+        help="Minimum read depth to call an allele (positions with less will be masked to N in the final consensus)",
+    )
+
+    collate_amplicon_results_wf_parser = workflow_subparsers.add_parser(
+        "collate-amplicon-results",
+        help="Collate amplicon mapping stats from multiple workflow output directories",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
+    collate_input_group = collate_amplicon_results_wf_parser.add_mutually_exclusive_group(required=True)
+    collate_input_group.add_argument(
+        "--input-directories",
+        type=file_path,
+        nargs="+",
+        help="Input directories containing per-sample amplicon workflow outputs",
+    )
+    collate_input_group.add_argument(
+        "--input-directories-file",
+        type=file_path,
+        help="Path to a file containing one input directory per line",
+    )
+    collate_amplicon_results_wf_parser.add_argument(
+        "--output-dir",
+        type=file_path,
+        required=True,
+        help="Output directory for the collated amplicon mapping stats CSV",
     )
 
     run_config_parser = workflow_subparsers.add_parser(
@@ -519,6 +567,7 @@ def cli_uONT():
                 'dest': param.name,
                 'help': f"{param.name}",
             }
+
             if param.default is param.empty:
                 arg['required'] = True
             else:
@@ -526,6 +575,9 @@ def cli_uONT():
             if get_origin(arg_type) is Literal:
                 arg['type'] = str
                 arg['choices'] = get_args(arg_type)
+            elif arg_type == list[FullPath]:
+                arg['type'] = file_path
+                arg['nargs'] = '+'
             elif isinstance(arg_type, type):
                 arg['type'] = arg_type
             elif arg_type == FullPath:
@@ -585,6 +637,15 @@ def cli_uONT():
                 tools = tools,
                 threads = args.threads,
                 min_read_depth = args.min_read_depth,
+            )
+        elif args.workflow_command == "collate-amplicon-results":
+            input_directories = args.input_directories
+            if args.input_directories_file:
+                input_directories = load_path_list_file(args.input_directories_file)
+
+            wf_collate_amplicon_results(
+                input_directories=input_directories,
+                output_dir=args.output_dir,
             )
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)

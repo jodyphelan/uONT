@@ -18,12 +18,15 @@ from .utils import run_cmd
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
+    job_consensus_bcftools,
+    job_consensus_medaka,
     job_estimate_genome_size_autocycler, 
     job_fastq_filter_chopper, 
     job_remove_adapters_porechop, 
     job_downsample_filtlong,
     job_polish_medaka,
     job_estimate_genome_size_lrge,
+    job_variant_calling_bcftools,
 )
 from .types import FullPath
 
@@ -282,9 +285,9 @@ def process_polish(
 
 def process_consensus(
         input_reads: str,
-        input_assembly: str,
+        input_reference: str,
         output_assembly: str,
-        polishing_tool: Literal["medaka"] = "medaka",
+        consensus_tool: Literal["medaka","bcftools"] = "medaka",
         threads: int = 4,
 ) -> None:
     """Generate a consensus sequence from an assembly and reads.
@@ -296,12 +299,40 @@ def process_consensus(
     
     Args:
         input_reads (str): Path to input fastq reads file.
-        input_assembly (str): Path to input assembly fasta file to generate consensus from.
+        input_reference (str): Path to input assembly fasta file to generate consensus from.
         output_assembly (str): Path where consensus assembly will be written.
-        polishing_tool (Literal["medaka"]): Tool to use for polishing. Defaults to "medaka".
+        consensus_tool (Literal["medaka","bcftools"]): Tool to use for polishing. Defaults to "medaka".
         threads (int): Number of threads to use. Defaults to 4.
     
     Raises:
-        ValueError: If specified polishing tool is not supported.
+        ValueError: If specified consensus tool is not supported.
     """
-    process_polish(input_reads, input_assembly, output_assembly, polishing_tool, threads)
+    if consensus_tool == "medaka":
+        job_consensus_medaka(input_reads, input_reference, output_assembly, threads)
+    elif consensus_tool == "bcftools":
+        job_consensus_bcftools(input_reference, input_reads, output_assembly)
+    else:
+        raise ValueError(f"Tool {consensus_tool} not supported for consensus generation.")
+
+def process_variant_calling(
+    reference_fasta: str,
+    input_bam: str,
+    output_vcf: str,
+    variant_caller: Literal["bcftools"] = "bcftools",
+) -> None:
+    """Call variants from mapped reads.
+    
+    Args:
+        reference_fasta (str): Path to reference FASTA file.
+        input_bam (str): Path to input BAM file with reads mapped to reference.
+        output_vcf (str): Path where output VCF file will be written.
+        variant_caller (Literal["bcftools"]): Tool to use for variant calling. Defaults to "bcftools".
+    
+    Raises:
+        ValueError: If specified variant caller is not supported.
+    """
+    if variant_caller == "bcftools":
+        job_variant_calling_bcftools(reference_fasta, input_bam, output_vcf)
+    else:
+        raise ValueError(f"Tool {variant_caller} not supported for variant calling.")
+

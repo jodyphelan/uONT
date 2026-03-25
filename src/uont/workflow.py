@@ -2,6 +2,7 @@
 Workflow functions for the uONT pipeline
 """
 
+import json
 import os
 import logging
 from importlib import import_module
@@ -9,10 +10,11 @@ import shutil
 from types import SimpleNamespace
 from typing import Any, Dict
 
-from .jobs import generate_low_dp_mask, job_map_reads_minimap2, job_mask_low_dp_regions
+from .jobs import generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions
 from .types import FullPath
 
 from .process import (
+    process_consensus,
     process_estimate_genome_size,
     process_fastq_filter,
     process_polish,
@@ -225,12 +227,12 @@ def wf_consensus(
     
     # Polish assembly
     polished_assembly_file = f"{output_dir}/consensus.fasta"
-    process_polish(
+    process_consensus(
         input_reads=input_reads,
-        input_assembly=reference_sequence,
+        input_reference=reference_sequence,
         output_assembly=polished_assembly_file,
         threads=threads,        
-        polishing_tool=tools.consensus,
+        consensus_tool=tools.consensus,
     )
     bam_file = f"{output_dir}/consensus_alignment.bam"
     job_map_reads_minimap2(
@@ -254,5 +256,39 @@ def wf_consensus(
         bed_file=low_depth_bed_file,
         output_fasta=masked_consensus,
     )
+
+    flagstat_json = f"{output_dir}/flagstat.json"
+    job_mapping_stats_flagstat(
+        input_bam=bam_file,
+        output_json=flagstat_json,
+    )
     
     logging.info(f"Consensus generation workflow completed. Final consensus: {masked_consensus}")
+
+def wf_collate_amplicon_results(
+    input_directories: list[FullPath],
+    output_dir: FullPath
+) -> None:
+    """Collate amplicon sequencing results from multiple samples into a single CSV.
+
+    Args:
+        input_directories (list[FullPath]): List of paths to input directories containing flagstat results.
+        output_dir (FullPath): Path to the output directory to write collated results.
+
+    Returns:
+        None
+    """
+    results = []
+    # make directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    job_collate_flagstat_jsons(
+        input_directories=input_directories,
+        output_csv=os.path.join(output_dir, "mapping_stats.csv"),
+    )
+
+    job_collate_fasta_consensus(
+        input_directories=input_directories,
+        output_fasta=os.path.join(output_dir, "consensus.fasta"),
+    )
