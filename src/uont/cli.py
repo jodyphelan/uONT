@@ -313,9 +313,19 @@ def cli_uONT():
         help="Organism name for genome size (if not provided, will be estimated from the data)",
     )
     assemble_wf_parser.add_argument(
-        "--copy-final-assembly", 
-        type=FullPath, 
-        help="Copy final assembly to path"
+        "--lab-id",
+        type=str,
+        help="Lab ID to use for naming the final assembly and downsampled reads",
+    )
+    assemble_wf_parser.add_argument(
+        "--link-id",
+        type=str,
+        help="Link ID to use for creating symbolic links to the final assembly",
+    )
+    assemble_wf_parser.add_argument(
+        "--link-directory",
+        type=str,
+        help="Directory to create symbolic links for the final assembly",
     )
 
     ########## END Workflow: assemble ##########
@@ -369,6 +379,10 @@ def cli_uONT():
         default=10,
         help="Minimum read depth to call an allele (positions with less will be masked to N in the final consensus)",
     )
+
+    ##### end consensus workflow #####
+
+    ### Collate amplicon results ####
 
     collate_amplicon_results_wf_parser = workflow_subparsers.add_parser(
         "collate-amplicon-results",
@@ -614,16 +628,22 @@ def cli_uONT():
                 logging.debug(f"Using genome size of {genome_size} for organism '{args.organism}'")
             else:
                 genome_size = None
+            if args.link_id and not args.link_directory:
+                logging.error("If --link-id is provided, --link-directory must also be provided. Exiting.")
+                sys.exit(1)
             wf_assemble(
-                args.input,
-                args.output_dir,
-                tools,
-                args.threads,
-                args.min_read_depth,
-                args.max_contigs,
-                args.min_read_length,
-                args.min_q_score,
-                genome_size,
+                input_fastq=args.input,
+                output_dir=args.output_dir,
+                tools=tools,
+                threads=args.threads,
+                min_read_depth=args.min_read_depth,
+                max_contigs=args.max_contigs,
+                min_read_length=args.min_read_length,
+                min_q_score=args.min_q_score,
+                genome_size=genome_size,
+                lab_id=args.lab_id,
+                link_id=args.link_id,
+                link_directory=args.link_directory,
             )
         elif args.workflow_command == "consensus":
             tools = initialise_tools(args)

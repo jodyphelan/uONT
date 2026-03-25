@@ -47,7 +47,9 @@ def wf_assemble(
     min_read_length: int = 1000,
     min_q_score: int = 10,
     genome_size: int = None,
-    copy_final_assembly: str = None,
+    lab_id: str = None,
+    link_id: str = None,
+    link_directory: str = None,
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
 
@@ -127,11 +129,20 @@ def wf_assemble(
     os.remove(adapter_removed_fastq)
     os.remove(filtered_fastq)
     os.remove(raw_assembly_file)
+    os.remove(raw_assembly_file+".fai")
+    os.remove(raw_assembly_file+".map-ont.mmi")
 
-    if copy_final_assembly:
-        final_assembly_file = copy_final_assembly
-        shutil.copy(polished_assembly_file, final_assembly_file)
-        logging.info(f"Final assembly copied to {final_assembly_file}")
+
+
+    if lab_id:
+        final_assembly_file = f"{output_dir}/{lab_id}_polished_assembly.fasta"
+        shutil.move(polished_assembly_file, final_assembly_file)
+        shutil.move(downsampled_fastq, f"{output_dir}/{lab_id}_downsampled.fastq.gz")
+
+    if link_id:
+        if not os.path.exists(link_directory):
+            os.makedirs(link_directory)
+        os.symlink(f"{final_assembly_file}", f"{link_directory}/{link_id}_polished_assembly.fasta")
 
     logging.info(f"Assembly workflow completed. Final assembly: {polished_assembly_file}")
 

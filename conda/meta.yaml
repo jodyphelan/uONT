@@ -40,6 +40,7 @@ requirements:
     - pysam
     - lrge
     - mafft
+    - porechop_abi
 
 test:
   imports:
