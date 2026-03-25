@@ -37,6 +37,9 @@ requirements:
     - pigz
     - seqkit
     - minipolish
+    - pysam
+    - lrge
+    - mafft
 
 test:
   imports:
