@@ -775,7 +775,7 @@ def job_collate_fasta_consensus(
 ):
     with open(output_fasta, "w") as O:
         for dir in input_directories:
-            fasta_path = os.path.join(dir, "consensus.fasta")
+            fasta_path = os.path.join(dir, "final_consensus.fasta")
             sample_name = os.path.basename(dir)
             with pysam.FastaFile(fasta_path) as fasta:
                 for record in fasta.references:

@@ -208,7 +208,7 @@ def _resolve_step_callable(step_type: str, qualified_name: str):
         raise ValueError(f"Configured {step_type} '{qualified_name}' does not exist")
     return getattr(module, qualified_name)
 
-def wf_consensus(
+def wf_amplicon(
     reference_sequence: FullPath,
     input_reads: FullPath,
     output_dir: str,
@@ -237,7 +237,7 @@ def wf_consensus(
     make_dir_if_not_exists(f"{output_dir}/")
     
     # Polish assembly
-    polished_assembly_file = f"{output_dir}/consensus.fasta"
+    polished_assembly_file = f"{output_dir}/polished_consensus.fasta"
     process_consensus(
         input_reads=input_reads,
         input_reference=reference_sequence,

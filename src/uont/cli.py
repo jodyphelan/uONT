@@ -20,7 +20,7 @@ from .process import (
 from .workflow import (
     wf_assemble,
     wf_collate_amplicon_results,
-    wf_consensus,
+    wf_amplicon,
     run_configured_workflow,
 )
 
@@ -645,12 +645,12 @@ def cli_uONT():
                 link_id=args.link_id,
                 link_directory=args.link_directory,
             )
-        elif args.workflow_command == "consensus":
+        elif args.workflow_command == "amplicon":
             tools = initialise_tools(args)
 
             reference_sequence = reference_sequences.get(args.accession) if args.accession else args.fasta
             
-            wf_consensus(
+            wf_amplicon(
                 reference_sequence = reference_sequence,
                 input_reads=args.input_reads,
                 output_dir = args.output_dir,
