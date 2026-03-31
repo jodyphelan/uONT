@@ -24,6 +24,8 @@ from .workflow import (
     run_configured_workflow,
 )
 
+from uont import __version__ as uont_version
+
 def _fullpath_constructor(loader: yaml.Loader, node: yaml.Node) -> FullPath:
     value = loader.construct_scalar(node)
     return file_path(value)
@@ -161,7 +163,12 @@ def cli_uONT():
         type=str,
         help="Path to YAML configuration file with tool parameters. Command-line arguments will override config file settings.",
     )
-
+    parent_parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s " + uont_version,
+        help="Show the version of uONT",
+    )
     parser = argparse.ArgumentParser(
         description="A pipeline to process ONT data to a polished assembly.",
         parents=[parent_parser],
