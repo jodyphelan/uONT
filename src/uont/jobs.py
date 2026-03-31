@@ -780,4 +780,30 @@ def job_collate_fasta_consensus(
             with pysam.FastaFile(fasta_path) as fasta:
                 for record in fasta.references:
                     seq = fasta.fetch(record)
-                    O.write(f">{sample_name} {record}\n{seq}\n")    
+                    O.write(f">{sample_name} {record}\n{seq}\n")
+
+
+
+def job_median_depth_samtools(
+    input_bam: FullPath,
+    output_json: FullPath
+):
+    """Calculate median read depth across the genome using samtools depth.
+    
+    Args:
+        input_bam (FullPath): Path to input BAM file with reads mapped to reference.
+        output_json (FullPath): Path where output JSON file with median depth will be written.
+    Returns:
+        None
+    """
+    logging.info(f"Calculating median read depth with samtools depth. Input BAM: {input_bam}, Output JSON: {output_json}")
+    tmp_depth_file = f"{output_json}.depth"
+    cmd = f"samtools depth {input_bam} > {tmp_depth_file}"
+    run_cmd(cmd)
+    depths = []
+    for l in open(tmp_depth_file):
+        row = l.strip().split("\t")
+        depths.append(int(row[2]))
+    median_depth = np.median(depths) if depths else 0
+    with open(output_json, "w") as O:
+        json.dump({"median_depth": median_depth}, O)
