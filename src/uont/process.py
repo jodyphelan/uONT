@@ -77,7 +77,7 @@ def process_collate_barcode_fastqs(
     for _, row in tqdm(list(sample_sheet_df.iterrows()), desc="Collating fastq files"):
         sample_id = row['Sample_ID']
         barcode = row['Index_barcode_#']
-        run_id = row['Run_ID']
+        run_id = row['Run_ID'].replace("ONT_", "").replace("_", "")
         if not os.path.exists(f'{source_dir}/{barcode}'):
             raise FileNotFoundError(f"Directory for barcode {barcode} not found in {source_dir}. Exiting.")
         fastq_files = os.listdir(f'{source_dir}/{barcode}')
@@ -101,13 +101,10 @@ def process_collate_barcode_fastqs(
             )
         )
     if not dry_run:
-        with open(f"{output_dir}/isolates.tsv", "w") as F:
+        with open(f"{output_dir}/../isolates.tsv", "w") as F:
             
             for sample in result:
                 F.write(f"{sample.run_id}\t{sample.lab_id}\n")
-        with open(f"{output_dir}/barcodes.tsv", "w") as F:
-            for sample in result:
-                F.write(f"{sample.barcode}\t{sample.lab_id}\n")
     return result
 
 
