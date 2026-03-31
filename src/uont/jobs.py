@@ -807,3 +807,34 @@ def job_median_depth_samtools(
     median_depth = np.median(depths) if depths else 0
     with open(output_json, "w") as O:
         json.dump({"median_depth": median_depth}, O)
+
+
+def job_read_length_histogram(
+    input_fastq: FullPath,
+    output_tsv: FullPath
+):
+    """Generate a read length histogram from a FASTQ file and save as TSV.
+    
+    Args:
+        input_fastq (FullPath): Path to input FASTQ file with reads.
+        output_tsv (FullPath): Path where output TSV file with read length histogram will be written. Columns: read_length, count.
+    Returns:
+        None
+    """
+    # bins of 50 bp up to 20 kb
+    bins = list(range(0, 20001, 50))
+    logging.info(f"Generating read length histogram from {input_fastq}. Output TSV: {output_tsv}")
+    length_counts = {b: 0 for b in bins}
+    with pysam.FastxFile(input_fastq) as fastq:
+        for entry in fastq:
+            length = len(entry.sequence)
+            # find the nearest bin
+            bin_length = min(bins, key=lambda x: abs(x - length))
+            length_counts[bin_length] += 1
+
+    with open(output_tsv, "w") as O:
+        O.write("read_length\tcount\n")
+        for length, count in sorted(length_counts.items()):
+            length = str(length) if length < 20000 else "20000+"
+            O.write(f"{length}\t{count}\n")
+
