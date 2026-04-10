@@ -293,7 +293,7 @@ def cli_uONT():
     assemble_wf_parser.add_argument(
         "--min-read-depth",
         type=int,
-        default=10,
+        default=25,
         help="Minimum read depth for subsampling (used in autocycler assembly)",
     )
     assemble_wf_parser.add_argument(
@@ -498,7 +498,7 @@ def cli_uONT():
     job_subparser.add_argument(
         "--min-read-depth", 
         type=int, 
-        default=10, 
+        default=25, 
         help="Minimum read depth for subsampling"
     )
     job_subparser.add_argument(

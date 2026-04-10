@@ -95,6 +95,14 @@ def wf_assemble(
     # 2. Estimate genome size if not provided
     if genome_size is None:
         genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
+        if genome_size > 15_000_000:
+            logging.error(f"Estimated genome size {genome_size} is larger than expected for a bacterial genome. Please check your data and consider providing an estimated genome size to the workflow.")
+            quit()
+        elif genome_size < 1_000_000:
+            logging.error(f"Estimated genome size {genome_size} is smaller than expected for a bacterial genome. Please check your data and consider providing an estimated genome size to the workflow.")
+            quit()
+        else:
+            logging.info(f"Estimated genome size: {genome_size} bp")
     
     # 3. Run assembly
     raw_assembly_file = f"{output_dir}/raw_assembly.fasta"
