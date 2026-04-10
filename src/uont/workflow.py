@@ -10,7 +10,8 @@ import shutil
 from types import SimpleNamespace
 from typing import Any, Dict
 
-from .jobs import generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions
+    
+from .jobs import job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_reorient_contigs_dnaapler
 from .types import FullPath
 
 from .process import (
@@ -42,10 +43,10 @@ def wf_assemble(
     output_dir: str,
     tools: SimpleNamespace,
     threads: int = 4,
-    min_read_depth: int = 10,
+    min_read_depth: int = 25,
     max_contigs: int = 80,
     min_read_length: int = 1000,
-    min_q_score: int = 10,
+    min_q_score: int = 12,
     genome_size: int = None,
     lab_id: str = None,
     link_id: str = None,
@@ -54,12 +55,11 @@ def wf_assemble(
     """Run the assemble workflow from raw reads through polishing.
 
     Workflow steps:
-        1. Create the output directory (if needed).
-        2. Filter reads with the configured ``fastq_filter`` tool.
-        3. Estimate genome size, then downsample to 150X coverage with the
-           selected ``read_downsampling`` tool.
-        4. Assemble the downsampled reads with the requested assembler.
-        5. Polish the raw assembly using the chosen polishing tool.
+        1. Filter reads with chopper and filtlong
+        2. Estimate genome size if not provided, using the selected ``genome_size_estimation`` tool.
+        3. Assemble the filtered reads with the requested assembler.
+        4. Polish the raw assembly using the chosen polishing tool.
+        5. Reorient the polished assembly to start at dnaA using dnaapler.
 
     Args:
         input_fastq (FullPath): Path to the input raw fastq file.
@@ -78,35 +78,28 @@ def wf_assemble(
     """
     logging.info(f"Starting assembly with input {input_fastq}")
     
+    
     make_dir_if_not_exists(f"{output_dir}/")
-    
-    # 1. Remove adapters
-    adapter_removed_fastq = f"{output_dir}/adapter_removed.fastq.gz"
-    process_remove_adapters(input_fastq, adapter_removed_fastq, tools.adapter_removal, threads)
-    
-    # 2. Filter reads by quality and length
-    filtered_fastq: FullPath = FullPath(f"{output_dir}/filtered.fastq.gz")
-    process_fastq_filter(adapter_removed_fastq, filtered_fastq, threads, tools.fastq_filter, minreadlen=min_read_length, quality=min_q_score)
 
-    
-    # 3. Estimate genome size and Downsample to target depth
-    downsampled_fastq: FullPath = FullPath(f"{output_dir}/downsampled.fastq.gz")
-    if genome_size is None:
-        genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
-    process_downsample_reads_to_target_depth(
-        input_fastq=filtered_fastq, 
-        output_fastq=downsampled_fastq, 
-        genome_size_estimation_tool=tools.genome_size_estimation,
-        read_downsampling_tool=tools.read_downsampling,
-        target_depth=150, 
-        genome_size=genome_size,
-        threads=threads, 
+
+    # 1. Filter reads
+    filtered_fastq = f"{output_dir}/filtered.fastq.gz"
+    job_ont_pre_assembly_qc(
+        input_fastq=input_fastq,
+        output_fastq=filtered_fastq,
+        threads=threads,
+        quality=min_q_score,
+        minreadlen=min_read_length,
     )
     
-    # 4. Run assembly
+    # 2. Estimate genome size if not provided
+    if genome_size is None:
+        genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
+    
+    # 3. Run assembly
     raw_assembly_file = f"{output_dir}/raw_assembly.fasta"
     process_assemble(
-        input_fastq=downsampled_fastq,
+        input_fastq=filtered_fastq,
         output_fasta=raw_assembly_file,
         threads=threads,
         assembler=tools.assembler,
@@ -115,7 +108,7 @@ def wf_assemble(
         genome_size=genome_size
     )
     
-    # 5. Polish assembly
+    # 4. Polish assembly
     polished_assembly_file = f"{output_dir}/polished_assembly.fasta"
     process_polish(
         input_reads=filtered_fastq,
@@ -125,27 +118,33 @@ def wf_assemble(
         polishing_tool=tools.polishing,
     )
 
-    # clean up intermediate files
-    os.remove(adapter_removed_fastq)
-    os.remove(filtered_fastq)
-    os.remove(raw_assembly_file)
-    os.remove(raw_assembly_file+".fai")
-    os.remove(raw_assembly_file+".map-ont.mmi")
+    reoriented_assembly_file = f"{output_dir}/polished_assembly_reoriented.fasta"
+    # 5. Reorient assembly
+    job_reorient_contigs_dnaapler(
+        input_fasta=polished_assembly_file,
+        output_fasta=reoriented_assembly_file,
+        threads=threads,
+    )
 
 
+    
+    final_assembly_file = f"{output_dir}/final_assembly.fasta"
+    shutil.copy(reoriented_assembly_file, final_assembly_file)
 
     if lab_id:
         final_assembly_file = f"{output_dir}/{lab_id}_polished_assembly.fasta"
-        shutil.move(polished_assembly_file, final_assembly_file)
-        shutil.move(downsampled_fastq, f"{output_dir}/{lab_id}_downsampled.fastq.gz")
+        shutil.copy(reoriented_assembly_file, final_assembly_file)
 
     if link_id:
         if not os.path.exists(link_directory):
             os.makedirs(link_directory)
         os.symlink(f"{final_assembly_file}", f"{link_directory}/{link_id}_polished_assembly.fasta")
 
-    logging.info(f"Assembly workflow completed. Final assembly: {polished_assembly_file}")
-
+    # clean up intermediate files
+    os.remove(raw_assembly_file)
+    os.remove(polished_assembly_file)
+    os.remove(raw_assembly_file+".fai")
+    os.remove(raw_assembly_file+".map-ont.mmi")
 
 def run_configured_workflow(config: Dict[str, Any]) -> None:
     """Execute a workflow described in a YAML/JSON configuration.

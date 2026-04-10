@@ -12,6 +12,7 @@ import rich_argparse
 from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
 import yaml
+import platform
 from .types import FullPath
 
 from .process import (
@@ -630,6 +631,7 @@ def cli_uONT():
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)
+
             if args.organism:
                 genome_size = get_genome_sizes().get(args.organism)
                 logging.debug(f"Using genome size of {genome_size} for organism '{args.organism}'")

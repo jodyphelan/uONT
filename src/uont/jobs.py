@@ -20,6 +20,7 @@ import time
 import pysam
 import numpy as np
 from tqdm import tqdm
+import platform
 import subprocess as sp
 from typing import Tuple
 from .utils import run_cmd
@@ -107,7 +108,7 @@ def job_fastq_filter_chopper(
         None
     """
     logging.info(f"Running chopper on {input_fastq} with output {output_fastq} using {threads} threads.")
-    cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} | pigz -c > {output_fastq}"
+    cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
 # src/uont/jobs.py
@@ -132,7 +133,7 @@ def job_assemble_miniasm(
     logging.info(f"Running miniasm with input: {input_fastq}")
 
     # First we run minimap2 to generate the overlaps (not shown here), then we run miniasm on the overlaps.
-    cmd = f"minimap2 -x ava-ont -t {threads} {input_fastq} {input_fastq} | pigz -c > overlaps.paf.gz"
+    cmd = f"minimap2 -x ava-ont -t {threads} {input_fastq} {input_fastq} | pigz -p {threads} -c > overlaps.paf.gz"
     run_cmd(cmd)
 
     # Construct and log the miniasm command here
@@ -151,6 +152,36 @@ def job_assemble_miniasm(
      
     # Copy the output assembly to the final destination if needed (e.g., if miniasm writes to a temp file)
     shutil.copy("miniasm_assembly.fasta", output_assembly)
+
+def job_ont_pre_assembly_qc(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    threads: int = 4,
+    quality: int = 12,
+    minreadlen: int = 1000,
+    headcrop: int = 80,
+    tailcrop: int = 80,
+    keeppercent: int = 90,
+) -> None:
+    """Basic filtering of nanopore reads using seqkit.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file.
+        output_fastq (FullPath): Path to output filtered fastq file.
+        threads (int): Number of threads to use. Defaults to 4.
+        quality (int): Minimum quality threshold. Defaults to 10.
+        minreadlen (int): Minimum read length in base pairs. Defaults to 1000.
+
+    Returns:
+        None
+    """
+    logging.info(f"Running basic filtering with seqkit on {input_fastq} with output {output_fastq} using {threads} threads.")
+    # chopper
+    cmd = f"gunzip -c {input_fastq} | chopper --minlength {minreadlen} --quality {quality} --headcrop {headcrop} --tailcrop {tailcrop} -t {threads} > intermediate.fastq"
+    run_cmd(cmd)
+    # filtlong
+    cmd = f"filtlong --min_length {minreadlen} --keep_percent {keeppercent} intermediate.fastq | pigz -p {threads} -c > {output_fastq}"
+    run_cmd(cmd)
 
 @timeit
 def job_remove_adapters_porechop(
@@ -201,6 +232,28 @@ def job_assemble_flye(
     # move final assembly to output location
     shutil.move(f"assembly/assembly.fasta", output_fasta)
 
+@run_in_tempdir
+def job_reorient_contigs_dnaapler(
+    input_fasta: FullPath,
+    output_fasta: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    """Reorient contigs to start at dnaA using dnaapler.
+    
+    Args:
+        input_fasta (FullPath): Path to input assembly fasta file.
+        output_fasta (FullPath): Path where reoriented assembly fasta will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+
+    Returns:
+        None
+    """
+    logging.info(f"Running dnaapler to reorient contigs in {input_fasta} using {threads} threads.")
+    cmd = f"dnaapler all --input {input_fasta} --output output.dnaapler --threads {threads}"
+    run_cmd(cmd)
+    shutil.move("output.dnaapler/dnaapler_reoriented.fasta", output_fasta)
+
 @timeit
 @run_in_tempdir
 def job_assemble_autocycler(
@@ -208,7 +261,7 @@ def job_assemble_autocycler(
     output_fasta: FullPath,
     genome_size: int,
     threads: int = 4,
-    assemblers: Tuple[str] = ("flye", "miniasm"),
+    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
     **kwargs
@@ -242,6 +295,9 @@ def job_assemble_autocycler(
     """
     logging.info(f"Starting autocycler assembly workflow")
     
+    if platform.machine() == "arm64":
+        assemblers = tuple(a for a in assemblers if a != "nextdenovo")
+        logging.warning("NextDenovo is not currently supported on ARM64 architecture. It will be skipped in the autocycler workflow.")
    
     # Create output directory structure
     autocycler_output_dir = 'autocycler'
@@ -365,6 +421,7 @@ def job_downsample_filtlong(
     input_fastq: FullPath,
     output_fastq: FullPath,
     target_bases: int,
+    threads: int = 4,
 ) -> None:
     """Downsample reads to a target number of bases using filtlong.
     
@@ -380,7 +437,7 @@ def job_downsample_filtlong(
         None
     """
     logging.info(f"Running filtlong downsample on {input_fastq} with target bases {target_bases} to output {output_fastq}.")
-    cmd = f"filtlong --target_bases {target_bases} --mean_q_weight 10 {input_fastq} | pigz -c > {output_fastq}"
+    cmd = f"filtlong --target_bases {target_bases} --mean_q_weight 10 {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
 
