@@ -35,6 +35,18 @@ class Fasta:
         
         return 0
     
+    def l90(self) -> int:
+        lengths = [len(self.fasta.fetch(contig)) for contig in self.fasta.references]
+        lengths.sort(reverse=True)
+        total_length = sum(lengths)
+        cumsum = 0
+        for i, length in enumerate(lengths):
+            cumsum += length
+            if cumsum >= total_length * 0.9:
+                return i + 1
+        
+        return len(lengths)
+    
     def num_contigs(self, min_contig_length=0) -> int:
         return sum(
             1 for contig in self.fasta.references 
@@ -57,6 +69,7 @@ class Fasta:
             "Ns_per_kb": self.Ns_per_kb(),
             "num_contigs": self.num_contigs(min_contig_length),
             "n50": self.n50(),
+            "l90": self.l90()
         }
         
         return metrics
@@ -64,5 +77,5 @@ class Fasta:
     def write_qc_report(self, output_file, min_contig_length: int =0):
         metrics = self.qc_metrics(min_contig_length)
         with open(output_file, "w") as f:
-            f.write("SampleID\tLength\tGC_Content\tNs_per_kb\tNum_Contigs\tN50\n")
-            f.write(f"{self.sample_id}\t{metrics['length']}\t{metrics['gc_content']:.4f}\t{metrics['Ns_per_kb']:.4f}\t{metrics['num_contigs']}\t{metrics['n50']}\n")
+            f.write("SampleID\tLength\tGC_Content\tNs_per_kb\tNum_Contigs\tN50\tL90\n")
+            f.write(f"{self.sample_id}\t{metrics['length']}\t{metrics['gc_content']:.4f}\t{metrics['Ns_per_kb']:.4f}\t{metrics['num_contigs']}\t{metrics['n50']}\t{metrics['l90']}\n")
