@@ -1,0 +1,40 @@
+name: Build and Upload Conda Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Mambaforge
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Mambaforge
+          use-mamba: true
+          channels: conda-forge,bioconda
+          channel-priority: true
+
+      - name: Install build and upload tools
+        run: |
+          mamba install -y conda-build anaconda-client
+
+      - name: Build conda package
+        run: |
+          conda-build . -c bioconda
+
+      - name: Upload to Anaconda
+        if: success()
+        run: |
+          # Get the build output path (typically noarch for pure Python packages)
+          BUILD_PATH=$(conda-build . -c bioconda --output)
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload "$BUILD_PATH" -u jodyphelan --force
+        env:
+          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
