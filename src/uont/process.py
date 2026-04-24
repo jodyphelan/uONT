@@ -6,6 +6,8 @@ Each function takes in the necessary input files and parameters, executes the ap
 This modular design allows for flexibility in tool choice and makes it easier to maintain and extend the processing steps as needed.
 """
 
+import csv
+import json
 import os
 import logging
 import warnings
@@ -14,7 +16,7 @@ import pandas as pd
 from dataclasses import dataclass
 from tqdm import tqdm
 from typing import Literal
-from .utils import run_cmd
+from .utils import run_cmd, run_in_tempdir
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
@@ -27,6 +29,9 @@ from .jobs import (
     job_polish_medaka,
     job_estimate_genome_size_lrge,
     job_variant_calling_bcftools,
+    job_dehumanise_hostile,
+    job_qc_python,
+    job_rmlst
 )
 from .types import FullPath
 
@@ -107,6 +112,40 @@ def process_collate_barcode_fastqs(
                 F.write(f"{sample.run_id}\t{sample.lab_id}\n")
     return result
 
+def process_collect_qc_results(
+    output_file: str,
+    sample_name: str = None,
+    qc: FullPath = None,
+    rmlst: FullPath = None,
+) -> None:
+    """Collect results from processing steps and write to output directory.
+    
+    This function is responsible for gathering the outputs from the various processing
+    steps (QC metrics, assembly stats) and writing them to the specified output directory
+    with standardized filenames. It also handles any necessary formatting or summarization
+    of results before writing.
+    
+    Args:
+        output_file (str): Path to output file where the collated results will be written.
+        sample_name (str, optional): Name of the sample. Defaults to None.
+        qc (FullPath, optional): Path to TSV file containing QC metrics for the sample. Defaults to None.
+        rmlst (FullPath, optional): Path to TSV file containing rMLST results for the sample. Defaults to None.
+
+    Returns:
+        None
+    """
+    results = {}
+    if qc:
+        tsv_file = csv.DictReader(open(qc),delimiter="\t")
+        for row in tsv_file:
+            results.update(row)
+    if rmlst:
+        tsv_file = csv.DictReader(open(rmlst),delimiter="\t")
+        for row in tsv_file:
+            results['species'] = row['species']
+            results['species-support'] = row['support']
+    results['SampleID'] = sample_name if sample_name else "sample"
+    json.dump(results, open(output_file, "w"), indent=4)
 
 def process_fastq_filter(
     input_fastq: FullPath,
@@ -158,6 +197,27 @@ def process_remove_adapters(
     else:
         raise ValueError(f"Tool {tool} not supported for adapter removal.")
 
+def process_dehumanise(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    tool: Literal["hostile"] = "hostile",
+    threads: int = 4,
+    **kwargs
+):
+    if tool == "hostile":
+        job_dehumanise_hostile(input_fastq, output_fastq, threads=threads, **kwargs)
+    else:
+        raise ValueError(f"Tool {tool} not supported for dehumanisation.")
+
+@run_in_tempdir
+def process_test(
+    input_fastq: FullPath,
+    output_fasta: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    genome_size = job_estimate_genome_size_lrge(input_fastq, threads=threads)
+    job_assemble_autocycler(input_fastq, output_fasta, genome_size,threads=threads, assembler="flye", genome_size=genome_size)
 
 def process_estimate_genome_size(
     input_fastq: FullPath,
@@ -333,3 +393,15 @@ def process_variant_calling(
     else:
         raise ValueError(f"Tool {variant_caller} not supported for variant calling.")
 
+@run_in_tempdir
+def process_test(
+    input_fasta: FullPath,
+    output_file: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    qc_file = 'qc_metrics.tsv'
+    rmlst_file = 'rmlst_results.tsv'
+    job_qc_python(input_fasta, qc_file)
+    job_rmlst(input_fasta, rmlst_file)
+    process_collect_qc_results(qc=qc_file, rmlst=rmlst_file, output_file=output_file)

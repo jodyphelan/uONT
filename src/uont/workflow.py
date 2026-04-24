@@ -2,7 +2,6 @@
 Workflow functions for the uONT pipeline
 """
 
-import json
 import os
 import logging
 from importlib import import_module
@@ -11,10 +10,11 @@ from types import SimpleNamespace
 from typing import Any, Dict
 
     
-from .jobs import job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_reorient_contigs_dnaapler
+from .jobs import job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_qc_python, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst
 from .types import FullPath
 
 from .process import (
+    process_collect_qc_results,
     process_consensus,
     process_estimate_genome_size,
     process_fastq_filter,
@@ -23,6 +23,8 @@ from .process import (
     process_assemble,
     process_remove_adapters,
 )
+
+from .utils import run_in_tempdir
 
 
 def make_dir_if_not_exists(directory: str) -> None:
@@ -37,10 +39,54 @@ def make_dir_if_not_exists(directory: str) -> None:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+@run_in_tempdir
+def wf_scrub(
+    input_fastq: FullPath,
+    output_fastq: FullPath,
+    tools: SimpleNamespace,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Run a QC workflow on raw reads.
 
+    Workflow steps:
+        1. Filter reads with chopper and filtlong
+        2. Generate QC reports with the selected qc tool.
+
+    Args:
+        input_fastq (FullPath): Path to the input raw fastq file.
+        output_fastq (FullPath): Path to the output fastq file.
+        tools (SimpleNamespace): Tool selections (fastq_filter, qc).
+        threads (int): Number of threads to use. Defaults to 4.
+    Returns:
+        None
+    """
+    logging.info(f"Starting QC workflow with input {input_fastq}")
+
+    # 1. Filter reads
+    filtered_fastq = f"filtered.fastq.gz"
+    job_remove_adapters_porechop(
+        input_fastq=input_fastq,
+        output_fastq=filtered_fastq,
+        threads=threads,
+    )
+    # 2. Dehumanise reads
+    dehumanised_fastq = f"dehumanised.fastq.gz"
+    job_dehumanise_hostile(
+        input_fastq=filtered_fastq,
+        output_fastq=dehumanised_fastq,
+        threads=threads,
+    )
+
+    # 3. Move selected outputs to final output directory
+    shutil.move(dehumanised_fastq, output_fastq)
+
+    logging.info(f"QC workflow completed. Filtered reads written to {output_fastq}")
+
+@run_in_tempdir
 def wf_assemble(
     input_fastq: FullPath,
-    output_dir: str,
+    output_dir: FullPath,
     tools: SimpleNamespace,
     threads: int = 4,
     min_read_depth: int = 25,
@@ -50,7 +96,8 @@ def wf_assemble(
     genome_size: int = None,
     lab_id: str = None,
     link_id: str = None,
-    link_directory: str = None,
+    link_directory: FullPath = None,
+    **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
 
@@ -63,7 +110,7 @@ def wf_assemble(
 
     Args:
         input_fastq (FullPath): Path to the input raw fastq file.
-        output_dir (str): Base output directory for workflow outputs.
+        output_dir (FullPath): Base output directory for workflow outputs.
         tools (SimpleNamespace): Tool selections (fastq_filter, genome_size_estimation,
             read_downsampling, assembler, polishing).
         threads (int): Number of threads to use. Defaults to 4.
@@ -72,7 +119,7 @@ def wf_assemble(
         min_read_length (int): Minimum read length for filtering. Defaults to 1000.
         min_q_score (int): Minimum average read quality score for filtering. Defaults to 10.
         genome_size (int): Estimated genome size in base pairs. If not provided, will be estimated from the data.
-        copy_final_assembly (str): Path to copy the final polished assembly. Defaults to None.
+        copy_final_assembly (FullPath): Path to copy the final polished assembly. Defaults to None.
     Returns:
         None
     """
@@ -83,7 +130,7 @@ def wf_assemble(
 
 
     # 1. Filter reads
-    filtered_fastq = f"{output_dir}/filtered.fastq.gz"
+    filtered_fastq = f"filtered.fastq.gz"
     job_ont_pre_assembly_qc(
         input_fastq=input_fastq,
         output_fastq=filtered_fastq,
@@ -105,7 +152,7 @@ def wf_assemble(
             logging.info(f"Estimated genome size: {genome_size} bp")
     
     # 3. Run assembly
-    raw_assembly_file = f"{output_dir}/raw_assembly.fasta"
+    raw_assembly_file = f"raw_assembly.fasta"
     process_assemble(
         input_fastq=filtered_fastq,
         output_fasta=raw_assembly_file,
@@ -117,7 +164,7 @@ def wf_assemble(
     )
     
     # 4. Polish assembly
-    polished_assembly_file = f"{output_dir}/polished_assembly.fasta"
+    polished_assembly_file = f"polished_assembly.fasta"
     process_polish(
         input_reads=filtered_fastq,
         input_assembly=raw_assembly_file,
@@ -126,7 +173,7 @@ def wf_assemble(
         polishing_tool=tools.polishing,
     )
 
-    reoriented_assembly_file = f"{output_dir}/polished_assembly_reoriented.fasta"
+    reoriented_assembly_file = f"polished_assembly_reoriented.fasta"
     # 5. Reorient assembly
     job_reorient_contigs_dnaapler(
         input_fasta=polished_assembly_file,
@@ -134,25 +181,47 @@ def wf_assemble(
         threads=threads,
     )
 
+    # 6. calculate assembly stats
+    assembly_stats_file = f"assembly_stats.tsv"
+    job_qc_python(
+        input_fasta=reoriented_assembly_file,
+        output_tsv=assembly_stats_file,
+    )
 
+    rmlst_result_file = f"rmlst.tsv"
+    job_rmlst(
+        input_fasta=reoriented_assembly_file,
+        output_tsv=rmlst_result_file,
+    )
+
+    qc_results_file = f"qc_results.json"
+    process_collect_qc_results(
+        sample_name=lab_id if lab_id else "sample",
+        output_file=qc_results_file,
+        qc=assembly_stats_file,
+        rmlst=rmlst_result_file,
+    )
     
-    final_assembly_file = f"{output_dir}/final_assembly.fasta"
-    shutil.copy(reoriented_assembly_file, final_assembly_file)
+    selected_outputs = {
+        filtered_fastq: f"{output_dir}/filtered_reads.fastq.gz",
+        reoriented_assembly_file: f"{output_dir}/final_assembly.fasta",
+        qc_results_file: f"{output_dir}/qc_results.json",
+    }
 
     if lab_id:
-        final_assembly_file = f"{output_dir}/{lab_id}_polished_assembly.fasta"
-        shutil.copy(reoriented_assembly_file, final_assembly_file)
+        selected_outputs[reoriented_assembly_file] = f"{output_dir}/{lab_id}_polished_assembly.fasta"
+    
+    for src, dst in selected_outputs.items():
+        logging.info(f"Copying {src} to {dst}")
+        shutil.copy(src, dst)
 
     if link_id:
         if not os.path.exists(link_directory):
             os.makedirs(link_directory)
-        os.symlink(f"{final_assembly_file}", f"{link_directory}/{link_id}_polished_assembly.fasta")
+        logging.info(f"Creating symlink for final assembly at {link_directory}/{link_id}_polished_assembly.fasta")
+        os.symlink(f"{reoriented_assembly_file}", f"{link_directory}/{link_id}_polished_assembly.fasta")
 
-    # clean up intermediate files
-    os.remove(raw_assembly_file)
-    os.remove(polished_assembly_file)
-    os.remove(raw_assembly_file+".fai")
-    os.remove(raw_assembly_file+".map-ont.mmi")
+    logging.info(f"Assembly workflow completed. Final assembly: {selected_outputs[reoriented_assembly_file]}")
 
 def run_configured_workflow(config: Dict[str, Any]) -> None:
     """Execute a workflow described in a YAML/JSON configuration.

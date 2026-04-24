@@ -12,7 +12,6 @@ import rich_argparse
 from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
 import yaml
-import platform
 from .types import FullPath
 
 from .process import (
@@ -23,6 +22,7 @@ from .workflow import (
     wf_collate_amplicon_results,
     wf_amplicon,
     run_configured_workflow,
+    wf_scrub,
 )
 
 from uont import __version__ as uont_version
@@ -226,6 +226,37 @@ def cli_uONT():
     )
 
     ##############################
+    ##### Workflow: scrub ######
+    ##############################
+
+    scrub_wf_parser = workflow_subparsers.add_parser(
+        "scrub",
+        help="Run read scrubbing workflow to remove adapters and dehumanise reads",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
+    scrub_wf_parser.add_argument(
+        "--input-fastq",
+        type=file_path,
+        required=True,
+        help="Input fastq file containing the raw reads",
+    )
+    scrub_wf_parser.add_argument(
+        "--output-fastq",
+        type=file_path,
+        required=True,
+        help="Output fastq file for the scrubbed reads",
+    )
+    scrub_wf_parser.add_argument(
+        "--threads",
+        type=int,
+        default=4,
+        help="The number of threads to use for read scrubbing",
+    )
+
+
+
+    ##############################
     ##### Workflow: assemble #####
     ##############################
 
@@ -235,7 +266,12 @@ def cli_uONT():
         parents=[parent_parser],
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )
-    assemble_wf_parser.add_argument("--input", type=str, required=True, help="Input fastq file")
+    assemble_wf_parser.add_argument(
+        "--input-fastq", 
+        type=file_path, 
+        required=True, 
+        help="Input fastq file"
+    )
     assemble_wf_parser.add_argument(
         "--output-dir",
         type=str,
@@ -627,7 +663,15 @@ def cli_uONT():
                 args.sample_sheet,
                 args.dry_run,
                 args.force
+            )
 
+        elif args.workflow_command == "scrub":
+            tools = initialise_tools(args)
+            wf_scrub(
+                input_fastq=args.input_fastq,
+                output_fastq=args.output_fastq,
+                tools=tools,
+                threads=args.threads,
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)
@@ -641,7 +685,7 @@ def cli_uONT():
                 logging.error("If --link-id is provided, --link-directory must also be provided. Exiting.")
                 sys.exit(1)
             wf_assemble(
-                input_fastq=args.input,
+                input_fastq=args.input_fastq,
                 output_dir=args.output_dir,
                 tools=tools,
                 threads=args.threads,

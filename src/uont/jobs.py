@@ -14,78 +14,66 @@ import os
 import logging
 import tempfile
 import shutil
-import functools
-import inspect
-import time
 import pysam
 import numpy as np
 from tqdm import tqdm
 import platform
 import subprocess as sp
 from typing import Tuple
-from .utils import run_cmd
+from .utils import run_cmd, run_in_tempdir, timeit
 from .types import FullPath
 from .qc import Fasta
 
 
-def timeit(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logging.info(f"Execution time for {func.__name__}: {elapsed_time:.2f} seconds")
-        return result
-    return wrapper
 
-def run_in_tempdir(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        cwd = os.getcwd()
-        tmpdir = tempfile.mkdtemp()
-        try:
-            # filter out any arguments in kwargs that are already in args to avoid duplication
-            # move kwargs to args based on function signature
-            sig = inspect.signature(func)
-            # find positional arguments in kwargs and move them to args
 
-            if len(args)==0:
-                new_args = {}
-                new_kwargs = {}
-                for param in sig.parameters.values():
-                    if param.name=='kwargs':
-                        continue
-                    if param.default is inspect.Parameter.empty:
-                        new_args[param.name] = kwargs.pop(param.name)
-                    else:
-                        new_kwargs[param.name] = kwargs.get(param.name, param.default)
-                args = tuple(new_args.values())
-                kwargs = new_kwargs
-            else:
-                new_args = args
-                new_kwargs = kwargs
+# def run_in_tempdir(func):
+#     @functools.wraps(func)
+#     def wrapper(*args, **kwargs):
+#         cwd = os.getcwd()
+#         tmpdir = tempfile.mkdtemp()
+#         try:
+#             # filter out any arguments in kwargs that are already in args to avoid duplication
+#             # move kwargs to args based on function signature
+#             sig = inspect.signature(func)
+#             # find positional arguments in kwargs and move them to args
+
+#             if len(args)==0:
+#                 new_args = {}
+#                 new_kwargs = {}
+#                 for param in sig.parameters.values():
+#                     if param.name=='kwargs':
+#                         continue
+#                     if param.default is inspect.Parameter.empty:
+#                         new_args[param.name] = kwargs.pop(param.name)
+#                     else:
+#                         new_kwargs[param.name] = kwargs.get(param.name, param.default)
+#                 args = tuple(new_args.values())
+#                 kwargs = new_kwargs
+#             else:
+#                 new_args = args
+#                 new_kwargs = kwargs
             
-            kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
-            # convert any FullPath arguments to absolute paths
-            sig = inspect.signature(func)
-            for param in sig.parameters.values():
-                arg_type = param.annotation if param.annotation is not param.empty else str
-                if arg_type == FullPath:
-                    arg_index = list(sig.parameters).index(param.name)
-                    if arg_index < len(args):
-                        args = list(args)
-                        args[arg_index] = os.path.abspath(args[arg_index])
-                        args = tuple(args)
-                    elif param.name in kwargs:
-                        kwargs[param.name] = os.path.abspath(kwargs[param.name])
+#             kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
+#             # convert any FullPath arguments to absolute paths
+#             sig = inspect.signature(func)
+#             for param in sig.parameters.values():
+#                 arg_type = param.annotation if param.annotation is not param.empty else str
+#                 if arg_type == FullPath:
+#                     arg_index = list(sig.parameters).index(param.name)
+#                     if arg_index < len(args):
+#                         args = list(args)
+#                         args[arg_index] = os.path.abspath(args[arg_index])
+#                         args = tuple(args)
+#                     elif param.name in kwargs:
+#                         kwargs[param.name] = os.path.abspath(kwargs[param.name])
 
-            os.chdir(tmpdir)
-            return func(*args, tmp_dir=tmpdir, **kwargs)
-        finally:
-            os.chdir(cwd)
-            shutil.rmtree(tmpdir, ignore_errors=True)
-    return wrapper
+#             os.chdir(tmpdir)
+#             return func(*args, tmp_dir=tmpdir, **kwargs)
+#         finally:
+#             os.chdir(cwd)
+#             shutil.rmtree(tmpdir, ignore_errors=True)
+#     return wrapper
 
 @timeit
 def job_fastq_filter_chopper(
@@ -557,7 +545,24 @@ def job_mask_low_dp_regions(
         O.write(f">{seqname}\n{''.join(sequence)}\n")
 
 
+@run_in_tempdir
+def job_rmlst(
+    input_fasta: FullPath,
+    output_tsv: FullPath,
+    **kwargs
+) -> None:
+    """Run rMLST analysis on an assembly to determine sequence type.
+    
+    Args:
+        input_fasta (FullPath): Path to input assembly fasta file.
+        output_tsv (FullPath): Path where rMLST results will be written.
 
+    Returns:
+        None
+    """
+    logging.info(f"Running rMLST analysis on {input_fasta}. Output: {output_tsv}")
+    cmd = f"rmlst -f {input_fasta} --species-only -o {output_tsv}"
+    run_cmd(cmd)
 
 @run_in_tempdir
 def generate_low_dp_mask(
@@ -600,11 +605,39 @@ def generate_low_dp_mask(
 
     shutil.move(outfile, f"{outfile}")
 
+@timeit
+@run_in_tempdir
+def job_dehumanise_hostile(
+        input_fastq: FullPath,
+        output_fastq: FullPath,
+        threads: int = 4,
+        **kwargs
+) -> None:
+    """Dehumanise reads using hostile.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file with reads.
+        output_fastq (FullPath): Path where dehumanised fastq will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Running hostile to dehumanise reads in {input_fastq}. Output: {output_fastq}")
+    gzip_output = output_fastq.endswith(".gz")
+    if gzip_output:
+        output_fastq = output_fastq[:-3]
+    cmd = f"hostile clean --fastq1 {input_fastq} -t {threads} -o - > {output_fastq}"
+    run_cmd(cmd)
+    if gzip_output:
+        cmd = f"pigz -p {threads} {output_fastq}"
+        run_cmd(cmd)
 
 
 def job_qc_python(
     input_fasta: FullPath,
-    output_qc: FullPath,
+    output_tsv: FullPath,
     sample_id: str = None,
     **kwargs
 ) -> None:
@@ -616,16 +649,16 @@ def job_qc_python(
 
     Args:
         input_fasta (FullPath): Path to input fasta file with reads.
-        output_qc (FullPath): Path where QC report will be written.
+        output_tsv (FullPath): Path where QC report will be written.
         sample_id (str): Sample identifier. Defaults to None.
         kwargs (dict[str, object]): Additional options for interface symmetry.
 
     Returns:
         None
     """
-    logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_qc}")
+    logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_tsv}")
     fasta = Fasta(input_fasta, sample_id=sample_id)
-    fasta.write_qc_report(output_file=output_qc)
+    fasta.write_qc_report(output_file=output_tsv)
 
 
 
