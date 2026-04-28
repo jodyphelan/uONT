@@ -41,6 +41,7 @@ requirements:
     - lrge
     - mafft
     - porechop_abi
+    - hostile
 
 test:
   imports:

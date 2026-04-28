@@ -253,6 +253,11 @@ def cli_uONT():
         default=4,
         help="The number of threads to use for read scrubbing",
     )
+    scrub_wf_parser.add_argument(
+        "--no-dehumanise",
+        action="store_true",
+        help="If set, the dehumanisation step will be skipped and only adapter removal will be performed",
+    )
 
 
 
@@ -672,6 +677,7 @@ def cli_uONT():
                 output_fastq=args.output_fastq,
                 tools=tools,
                 threads=args.threads,
+                dehumanise=not args.no_dehumanise,
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)

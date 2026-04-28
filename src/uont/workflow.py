@@ -45,6 +45,7 @@ def wf_scrub(
     output_fastq: FullPath,
     tools: SimpleNamespace,
     threads: int = 4,
+    dehumanise: bool = True,
     **kwargs
 ) -> None:
     """Run a QC workflow on raw reads.
@@ -72,14 +73,18 @@ def wf_scrub(
     )
     # 2. Dehumanise reads
     dehumanised_fastq = f"dehumanised.fastq.gz"
-    job_dehumanise_hostile(
-        input_fastq=filtered_fastq,
-        output_fastq=dehumanised_fastq,
-        threads=threads,
-    )
+    if dehumanise:
+        job_dehumanise_hostile(
+            input_fastq=filtered_fastq,
+            output_fastq=dehumanised_fastq,
+            threads=threads,
+        )
+        final_fastq = dehumanised_fastq
+    else:
+        final_fastq = filtered_fastq
 
     # 3. Move selected outputs to final output directory
-    shutil.move(dehumanised_fastq, output_fastq)
+    shutil.move(final_fastq, output_fastq)
 
     logging.info(f"QC workflow completed. Filtered reads written to {output_fastq}")
 
