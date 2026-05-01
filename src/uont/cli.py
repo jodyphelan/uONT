@@ -322,7 +322,7 @@ def cli_uONT():
         "--polishing-tool",
         type=str,
         default="medaka",
-        choices=["medaka"],
+        choices=["medaka","dorado"],
         help="The tool to use for polishing the assembly",
     )
     assemble_wf_parser.add_argument(
@@ -376,6 +376,18 @@ def cli_uONT():
         type=str,
         help="Directory to create symbolic links for the final assembly",
     )
+    assemble_wf_parser.add_argument(
+        "--bam-for-dorado",
+        type=str,
+        help="BAM file to use for Dorado polishing",
+    )
+    assemble_wf_parser.add_argument(
+        "--medaka-batch-size",
+        type=int,
+        default=100,
+        help="Batch size for medaka polishing",
+    )
+
 
     ########## END Workflow: assemble ##########
 
@@ -703,7 +715,10 @@ def cli_uONT():
                 lab_id=args.lab_id,
                 link_id=args.link_id,
                 link_directory=args.link_directory,
+                bam_for_dorado=args.bam_for_dorado,
+                batch_size=args.medaka_batch_size,
             )
+            
         elif args.workflow_command == "amplicon":
             tools = initialise_tools(args)
 

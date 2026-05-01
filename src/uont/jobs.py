@@ -151,7 +151,7 @@ def job_ont_pre_assembly_qc(
     tailcrop: int = 80,
     keeppercent: int = 90,
 ) -> None:
-    """Basic filtering of nanopore reads using seqkit.
+    """Basic filtering of nanopore reads using chopper and filtlong.
     
     Args:
         input_fastq (FullPath): Path to input fastq file.
@@ -163,7 +163,7 @@ def job_ont_pre_assembly_qc(
     Returns:
         None
     """
-    logging.info(f"Running basic filtering with seqkit on {input_fastq} with output {output_fastq} using {threads} threads.")
+    logging.info(f"Running basic filtering on {input_fastq} with output {output_fastq} using {threads} threads.")
     # chopper
     cmd = f"gunzip -c {input_fastq} | chopper --minlength {minreadlen} --quality {quality} --headcrop {headcrop} --tailcrop {tailcrop} -t {threads} > intermediate.fastq"
     run_cmd(cmd)
@@ -428,15 +428,54 @@ def job_downsample_filtlong(
     cmd = f"filtlong --target_bases {target_bases} --mean_q_weight 10 {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
+@timeit
+@run_in_tempdir
+def job_polish_dorado(
+    input_bam: FullPath,
+    input_assembly: FullPath,
+    output_assembly: FullPath,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Polish an assembly using dorado.
+    
+    Args:
+        input_bam (FullPath): Path to input BAM file used for polishing.
+        input_assembly (FullPath): Path to input assembly fasta file to polish.
+        output_assembly (FullPath): Path where polished assembly will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options including ``tmp_dir``.
+
+    Returns:
+        None
+    """
+    logging.info(f"Running dorado polishing on {input_assembly}")
+    
+    input_bam = kwargs.get("bam_for_dorado", input_bam)
+
+    tmp_dir = kwargs.get("tmp_dir")
+    os.makedirs(tmp_dir, exist_ok=True)
+    
+    cmd = f"dorado  aligner -t 4 {input_assembly} {input_bam} | samtools sort -@ 4 -o aligned.bam -"
+    run_cmd(cmd)
+
+    cmd = f"samtools index aligned.bam"
+    run_cmd(cmd)
+
+    cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} > {output_assembly}"
+    run_cmd(cmd)
+
+
 
 @timeit
 @run_in_tempdir
 def job_polish_medaka(
-        input_reads: FullPath,
-        input_assembly: FullPath,
-        output_assembly: FullPath,
-        threads: int = 4,
-        **kwargs
+    input_reads: FullPath,
+    input_assembly: FullPath,
+    output_assembly: FullPath,
+    threads: int = 4,
+    batch_size: int = 100,
+    **kwargs
 ) -> None:
     """Polish an assembly twice using medaka consensus.
     
@@ -461,7 +500,7 @@ def job_polish_medaka(
     tmp_dir1 = os.path.join(tmp_dir, "round1")
     os.makedirs(tmp_dir1, exist_ok=True)
     # Round 1: Polish original assembly
-    cmd_round1 = f"medaka_consensus -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
+    cmd_round1 = f"medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
     # run command and check check stdout for "ERROR"
     result1 = sp.run(cmd_round1, shell=True, capture_output=True, text=True)
     bacteria_model_working = True
@@ -469,7 +508,7 @@ def job_polish_medaka(
         if "ERROR: --bacteria was specified but input data was not compatible." in result1.stdout:
             logging.warning("Medaka round 1 failed with --bacteria model. Retrying without --bacteria flag.")
             bacteria_model_working = False
-            cmd_round1 = f"medaka_consensus -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
+            cmd_round1 = f"medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
             run_cmd(cmd_round1)
         else:
             logging.error(f"Medaka round 1 failed with error:\n{result1.stdout}")
@@ -479,9 +518,9 @@ def job_polish_medaka(
     os.makedirs(tmp_dir2, exist_ok=True)
     if bacteria_model_working:
         logging.info(f"Running medaka polishing (round 2) with bacteria model for {tmp_dir1}/consensus.fasta")
-        cmd_round2 = f"medaka_consensus -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
+        cmd_round2 = f"medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
     else:
-        cmd_round2 = f"medaka_consensus -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
+        cmd_round2 = f"medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
     run_cmd(cmd_round2)
 
     shutil.move(f"{tmp_dir2}/consensus.fasta", output_assembly)

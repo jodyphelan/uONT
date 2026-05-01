@@ -130,6 +130,8 @@ def wf_assemble(
     """
     logging.info(f"Starting assembly with input {input_fastq}")
     
+    if tools.polishing == "dorado" and "bam_for_dorado" not in kwargs:
+        raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
     
     make_dir_if_not_exists(f"{output_dir}/")
 
@@ -176,6 +178,7 @@ def wf_assemble(
         output_assembly=polished_assembly_file,
         threads=threads,        
         polishing_tool=tools.polishing,
+        bam_for_dorado=kwargs.get("bam_for_dorado", None),
     )
 
     reoriented_assembly_file = f"polished_assembly_reoriented.fasta"

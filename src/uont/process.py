@@ -23,7 +23,8 @@ from .jobs import (
     job_consensus_bcftools,
     job_consensus_medaka,
     job_estimate_genome_size_autocycler, 
-    job_fastq_filter_chopper, 
+    job_fastq_filter_chopper,
+    job_polish_dorado, 
     job_remove_adapters_porechop, 
     job_downsample_filtlong,
     job_polish_medaka,
@@ -316,8 +317,9 @@ def process_polish(
         input_reads: str,
         input_assembly: str,
         output_assembly: str,
-        polishing_tool: Literal["medaka"] = "medaka",
+        polishing_tool: Literal["medaka","dorado"] = "medaka",
         threads: int = 4,
+        **kwargs
 ) -> None:
     """Polish an assembly to improve accuracy.
     
@@ -328,14 +330,16 @@ def process_polish(
         input_reads (str): Path to input fastq reads file.
         input_assembly (str): Path to input assembly fasta file to polish.
         output_assembly (str): Path where polished assembly will be written.
-        polishing_tool (Literal["medaka"]): Tool to use for polishing. Defaults to "medaka".
+        polishing_tool (Literal["medaka","dorado"]): Tool to use for polishing. Defaults to "medaka".
         threads (int): Number of threads to use. Defaults to 4.
     
     Raises:
         ValueError: If specified polishing tool is not supported.
     """
     if polishing_tool == "medaka":
-        job_polish_medaka(input_reads, input_assembly, output_assembly, threads)
+        job_polish_medaka(input_reads, input_assembly, output_assembly, threads, **kwargs)
+    elif polishing_tool == "dorado":
+        job_polish_dorado(input_reads, input_assembly, output_assembly, threads, **kwargs)
     else:
         raise ValueError(f"Tool {polishing_tool} not supported for polishing.")
 
