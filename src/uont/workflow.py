@@ -99,6 +99,7 @@ def wf_assemble(
     min_read_length: int = 1000,
     min_q_score: int = 12,
     genome_size: int = None,
+    rmlst: bool = False,
     lab_id: str = None,
     link_id: str = None,
     link_directory: FullPath = None,
@@ -196,11 +197,13 @@ def wf_assemble(
         output_tsv=assembly_stats_file,
     )
 
-    rmlst_result_file = f"rmlst.tsv"
-    job_rmlst(
-        input_fasta=reoriented_assembly_file,
-        output_tsv=rmlst_result_file,
-    )
+    rmlst_result_file = None
+    if rmlst:
+        rmlst_result_file = f"rmlst.tsv"
+        job_rmlst(
+            input_fasta=reoriented_assembly_file,
+            output_tsv=rmlst_result_file,
+        )
 
     qc_results_file = f"qc_results.json"
     process_collect_qc_results(

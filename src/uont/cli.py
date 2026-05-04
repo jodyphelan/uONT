@@ -215,6 +215,7 @@ def cli_uONT():
 
     workflow_parser = subparsers.add_parser(
         "workflow",
+        aliases=["wf"],
         help="Run workflow commands",
         parents=[parent_parser],
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
@@ -422,6 +423,11 @@ def cli_uONT():
         type=int,
         default=100,
         help="Batch size for medaka polishing",
+    )
+    assemble_wf_parser.add_argument(
+        "--rmlst",
+        action="store_true",
+        help="Run optional rMLST species assignment on the final assembly",
     )
 
 
@@ -707,7 +713,7 @@ def cli_uONT():
     if config_data:
         args = update_args_from_config(args, config_data)
 
-    if args.command == "workflow":
+    if args.command in ("workflow", "wf"):
         if args.workflow_command == "prepare":
             process_collate_barcode_fastqs(
                 args.source_dir, 
@@ -752,6 +758,7 @@ def cli_uONT():
                 link_directory=args.link_directory,
                 bam_for_dorado=args.bam_for_dorado,
                 batch_size=args.medaka_batch_size,
+                rmlst=args.rmlst,
             )
             
         elif args.workflow_command == "amplicon":
