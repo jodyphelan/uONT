@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import rich_argparse
+from rich.logging import RichHandler
 from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
 import yaml
@@ -146,6 +147,36 @@ def list_reference_sequences() -> list:
     
 reference_sequences = list_reference_sequences()
 
+
+def configure_logging(debug: bool = False, log_file: str | None = None) -> None:
+    """Configure console logging and optional file logging for the CLI."""
+    level = logging.DEBUG if debug else logging.INFO
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    console_handler = RichHandler(rich_tracebacks=True)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger.addHandler(console_handler)
+
+    if log_file:
+        log_file = os.path.abspath(log_file)
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+        )
+        root_logger.addHandler(file_handler)
+
+        logging.info("Writing logs to file: %s", log_file)
+
 def cli_uONT():
     """Main entry point for the uONT CLI."""
     parent_parser = argparse.ArgumentParser(
@@ -158,6 +189,11 @@ def cli_uONT():
         "--debug",
         action="store_true",
         help="Enable debug logging",
+    )
+    parent_parser.add_argument(
+        "--log-file",
+        type=file_path,
+        help="Optional path to a log file. If provided, logs are written to both console and file.",
     )
     parent_parser.add_argument(
         "--config",
@@ -664,8 +700,7 @@ def cli_uONT():
     
     args = parser.parse_args()
 
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+    configure_logging(debug=args.debug, log_file=args.log_file)
 
     config_data = load_yaml_config(args.config) if args.config else None
 

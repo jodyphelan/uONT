@@ -42,6 +42,8 @@ requirements:
     - mafft
     - porechop_abi
     - hostile
+    - nextdenovo # [linux]
+    - nextpolish # [linux]
 
 test:
   imports:
