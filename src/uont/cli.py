@@ -430,6 +430,11 @@ def cli_uONT():
         action="store_true",
         help="Run optional rMLST species assignment on the final assembly",
     )
+    assemble_wf_parser.add_argument(
+        "--models-directory",
+        type=file_path,
+        help="Directory containing custom Dorado models",
+    )
 
 
     ########## END Workflow: assemble ##########
@@ -777,6 +782,7 @@ def cli_uONT():
                 bam_for_dorado=args.bam_for_dorado,
                 batch_size=args.medaka_batch_size,
                 rmlst=args.rmlst,
+                models_directory=args.models_directory,
             )
             
         elif args.workflow_command == "amplicon":

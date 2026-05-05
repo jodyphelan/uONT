@@ -435,6 +435,7 @@ def job_polish_dorado(
     input_assembly: FullPath,
     output_assembly: FullPath,
     threads: int = 4,
+    models_path: str = None,
     **kwargs
 ) -> None:
     """Polish an assembly using dorado.
@@ -462,7 +463,13 @@ def job_polish_dorado(
     cmd = f"samtools index aligned.bam"
     run_cmd(cmd)
 
-    cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} > {output_assembly}"
+    if models_path:
+        logging.info(f"Using custom dorado models from {models_path}")
+        models_string = f"--models-directory {models_path}"
+    else:
+        models_string = ""
+        
+    cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} {models_string} > {output_assembly}"
     run_cmd(cmd)
 
 
