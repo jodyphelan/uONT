@@ -13,10 +13,77 @@ from .types import FullPath
 
 DEFAULT_CLI_DEPENDENCIES = [
     "autocycler",
+    "bcftools",
+    "chopper",
     "dnaapler",
+    "dorado",
     "filtlong",
+    "flye",
+    "hostile",
+    "lrge",
+    "medaka",
+    "miniasm",
+    "minimap2",
+    "pigz",
+    "porechop_abi",
+    "rmlst",
+    "samtools",
+    "seqkit",
 ]
 
+def get_software_version(tool: str) -> str:
+    cmds = {
+        "autocycler": "autocycler --version",
+        "bcftools": "bcftools --version",
+        "chopper": "chopper --version",
+        "dnaapler": "dnaapler --version",
+        "dorado": "dorado --version",
+        "filtlong": "filtlong --version",
+        "flye": "flye --version",
+        "hostile": "hostile --version",
+        "lrge": "lrge --version",
+        "medaka": "medaka --version",
+        "miniasm": "miniasm -V",
+        "minimap2": "minimap2 --version",
+        "pigz": "pigz --version",
+        "porechop_abi": "porechop_abi --version",
+        "rmlst": "rmlst --version",
+        "samtools": "samtools --version",
+        "seqkit": "seqkit version",
+    }
+    regex = {
+        "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "bcftools": r"bcftools\s+([0-9][0-9A-Za-z_.-]*)",
+        "chopper": r"chopper\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "dnaapler": r"dnaapler\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "dorado": r"dorado\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "filtlong": r"filtlong\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "flye": r"flye\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "hostile": r"hostile\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "lrge": r"lrge\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "medaka": r"medaka\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "miniasm": r"miniasm\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "minimap2": r"([0-9][0-9A-Za-z_.-]*)",
+        "pigz": r"pigz\s+([0-9][0-9A-Za-z_.-]*)",
+        "porechop_abi": r"porechop(?:_abi)?\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "rmlst": r"rmlst\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "samtools": r"samtools\s+([0-9][0-9A-Za-z_.-]*)",
+        "seqkit": r"seqkit\s+v?([0-9][0-9A-Za-z_.-]*)",
+    }
+
+    if tool not in cmds:
+        raise ValueError(f"No version command configured for tool: {tool}")
+
+    x = sp.run(cmds[tool], shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
+    text = x.stdout.decode("utf-8", errors="ignore") + x.stderr.decode("utf-8", errors="ignore")
+    match = re.search(regex[tool], text, flags=re.IGNORECASE)
+    if not match:
+        # Fallback: try to extract the first semantic-looking version from output.
+        fallback = re.search(r"([0-9]+\.[0-9]+(?:\.[0-9A-Za-z_.-]+)?)", text)
+        if fallback:
+            return fallback.group(1)
+        raise ValueError(f"Could not parse version for tool '{tool}' from output:\n{text}")
+    return match.group(1)
 
 def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str], list[str]]:
     """Return available and missing CLI dependencies.
@@ -38,8 +105,22 @@ def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str]
             seen.add(program)
             unique_programs.append(program)
 
-    available = [program for program in unique_programs if which(program) is not None]
-    missing = [program for program in unique_programs if which(program) is None]
+    available: list[str] = []
+    missing: list[str] = []
+
+    for program in unique_programs:
+        if which(program) is None:
+            missing.append(program)
+            print(f"🔴 {program}: not found")
+            continue
+
+        available.append(program)
+        try:
+            version = get_software_version(program)
+            print(f"🟢 {program}: {version}")
+        except Exception:
+            print(f"🟠 {program}: found, version unknown")
+
     return available, missing
 
 def run_cmd(cmd: str, desc=None, log: str=None, exit_on_error: bool=True) -> sp.CompletedProcess:
