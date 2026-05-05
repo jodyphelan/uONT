@@ -436,6 +436,7 @@ def job_polish_dorado(
     output_assembly: FullPath,
     threads: int = 4,
     models_path: str = None,
+    rounds: int = 2,
     **kwargs
 ) -> None:
     """Polish an assembly using dorado.
@@ -468,9 +469,16 @@ def job_polish_dorado(
         models_string = f"--models-directory {models_path}"
     else:
         models_string = ""
-        
-    cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} {models_string} > {output_assembly}"
-    run_cmd(cmd)
+
+
+    for round in range(1, rounds+1):
+        tmp_asm = f"round{round}_asm.fasta"
+        cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} {models_string} > {tmp_asm}"
+        run_cmd(cmd)
+        input_assembly = tmp_asm  # Update input_assembly for the next round
+
+    shutil.move(tmp_asm, output_assembly)
+    logging.info(f"Dorado polishing completed. Output: {output_assembly}")
 
 
 
