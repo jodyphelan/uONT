@@ -10,6 +10,38 @@ import inspect
 import time
 from .types import FullPath
 
+
+DEFAULT_CLI_DEPENDENCIES = [
+    "autocycler",
+    "dnaapler",
+    "filtlong",
+]
+
+
+def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str], list[str]]:
+    """Return available and missing CLI dependencies.
+
+    Args:
+        programs (list[str] | None): CLI programs to check. If None, checks
+            ``DEFAULT_CLI_DEPENDENCIES``.
+
+    Returns:
+        tuple[list[str], list[str]]: (available, missing)
+    """
+    programs_to_check = programs if programs is not None else DEFAULT_CLI_DEPENDENCIES
+
+    # Preserve order while avoiding duplicate checks.
+    seen = set()
+    unique_programs = []
+    for program in programs_to_check:
+        if program not in seen:
+            seen.add(program)
+            unique_programs.append(program)
+
+    available = [program for program in unique_programs if which(program) is not None]
+    missing = [program for program in unique_programs if which(program) is None]
+    return available, missing
+
 def run_cmd(cmd: str, desc=None, log: str=None, exit_on_error: bool=True) -> sp.CompletedProcess:
     if desc:
         logging.info(desc)

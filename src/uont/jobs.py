@@ -500,7 +500,7 @@ def job_polish_medaka(
     tmp_dir1 = os.path.join(tmp_dir, "round1")
     os.makedirs(tmp_dir1, exist_ok=True)
     # Round 1: Polish original assembly
-    cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
+    cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2; medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
     # run command and check check stdout for "ERROR"
     result1 = sp.run(cmd_round1, shell=True, capture_output=True, text=True)
     bacteria_model_working = True
@@ -508,7 +508,7 @@ def job_polish_medaka(
         if "ERROR: --bacteria was specified but input data was not compatible." in result1.stdout:
             logging.warning("Medaka round 1 failed with --bacteria model. Retrying without --bacteria flag.")
             bacteria_model_working = False
-            cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
+            cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2; medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
             run_cmd(cmd_round1)
         else:
             logging.error(f"Medaka round 1 failed with error:\n{result1.stdout}")
@@ -518,9 +518,9 @@ def job_polish_medaka(
     os.makedirs(tmp_dir2, exist_ok=True)
     if bacteria_model_working:
         logging.info(f"Running medaka polishing (round 2) with bacteria model for {tmp_dir1}/consensus.fasta")
-        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
+        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2; medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
     else:
-        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
+        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2; medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
     run_cmd(cmd_round2)
 
     shutil.move(f"{tmp_dir2}/consensus.fasta", output_assembly)

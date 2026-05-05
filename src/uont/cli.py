@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
 import yaml
 from .types import FullPath
+from .utils import check_cli_dependencies, DEFAULT_CLI_DEPENDENCIES
 
 from .process import (
     process_collate_barcode_fastqs,
@@ -415,7 +416,7 @@ def cli_uONT():
     )
     assemble_wf_parser.add_argument(
         "--bam-for-dorado",
-        type=str,
+        type=file_path,
         help="BAM file to use for Dorado polishing",
     )
     assemble_wf_parser.add_argument(
@@ -532,6 +533,23 @@ def cli_uONT():
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )
     process_subparsers = process_parser.add_subparsers(dest="process_command", help="Available processes")
+
+    deps_parser = subparsers.add_parser(
+        "check-dependencies",
+        aliases=["deps"],
+        help="Check whether required CLI tools are available on PATH",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
+    deps_parser.add_argument(
+        "--tools",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional list of tools to check. If omitted, checks defaults: "
+            + ", ".join(DEFAULT_CLI_DEPENDENCIES)
+        ),
+    )
 
 
 
@@ -831,5 +849,13 @@ def cli_uONT():
                 process_parser.print_help()
         else:
             process_parser.print_help()
+    elif args.command in ("check-dependencies", "deps"):
+        available, missing = check_cli_dependencies(args.tools)
+        if available:
+            logging.info("Available dependencies: %s", ", ".join(available))
+        if missing:
+            logging.error("Missing dependencies: %s", ", ".join(missing))
+            sys.exit(1)
+        logging.info("All checked dependencies are available.")
     else:
         parser.print_help()
