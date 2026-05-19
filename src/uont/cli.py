@@ -663,6 +663,11 @@ def cli_uONT():
             if get_origin(arg_type) is Literal:
                 arg['type'] = str
                 arg['choices'] = get_args(arg_type)
+            elif arg_type == bool:
+                arg['action'] = 'store_true' if param.default is False else 'store_false'
+                # remove the default value for boolean flags since it's implied by the action
+                if 'default' in arg:                    
+                    del arg['default']
             elif isinstance(arg_type, type):
                 arg['type'] = arg_type
             elif arg_type == FullPath:
@@ -718,6 +723,11 @@ def cli_uONT():
             elif arg_type == list[FullPath]:
                 arg['type'] = file_path
                 arg['nargs'] = '+'
+            elif arg_type == bool:
+                arg['action'] = 'store_true' if param.default is False else 'store_false'
+                # remove the default value for boolean flags since it's implied by the action
+                if 'default' in arg:                    
+                    del arg['default']
             elif isinstance(arg_type, type):
                 arg['type'] = arg_type
             elif arg_type == FullPath:

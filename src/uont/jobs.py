@@ -1020,6 +1020,8 @@ def job_concatenate_ont_bams(
     input_dir: FullPath,
     output_dir: FullPath,
     id_csv_file: FullPath,
+    write_fastq: bool = False,
+    threads: int = 4,
     **kwargs
 ) -> None:
     """Concatenate BAM files from multiple ONT barcodes into a single BAM per sample.
@@ -1073,3 +1075,8 @@ def job_concatenate_ont_bams(
                 cmd = f"samtools merge -f -b {tmp_bam_list.name} {output_bam}"
                 run_cmd(cmd)
                 logging.info(f"Concatenated BAM files for sample {sample_id} into {output_bam}")
+        if write_fastq:
+            output_fastq = os.path.join(output_dir, f"{sample_id}.fastq.gz")
+            cmd = f"samtools fastq {output_bam} | pigz -p {threads} -c > {output_fastq}"
+            run_cmd(cmd)
+            logging.info(f"Wrote FASTQ for sample {sample_id} to {output_fastq}")
