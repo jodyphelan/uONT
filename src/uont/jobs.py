@@ -9,6 +9,9 @@ for the CLI interface, allowing users to run specific steps directly from the
 command line if desired.
 """
 
+from collections import defaultdict
+import csv
+from glob import glob
 import json
 import os
 import logging
@@ -982,3 +985,91 @@ def job_read_length_histogram(
             length = str(length) if length < 20000 else "20000+"
             O.write(f"{length}\t{count}\n")
 
+
+@run_in_tempdir
+def job_map_reads_bwa(
+    input_reads: FullPath,
+    input_assembly: FullPath,
+    output_bam: FullPath,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Map reads to an assembly using bwa mem and output sorted BAM.
+    
+    Args:
+        input_reads (FullPath): Path to input fastq reads file.
+        input_assembly (FullPath): Path to input assembly fasta file.
+        output_bam (FullPath): Path where sorted BAM file will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Mapping reads to assembly with bwa mem. Reads: {input_reads}, Assembly: {input_assembly}, Output BAM: {output_bam}")
+    cmd = f"bwa index {input_assembly}"
+    run_cmd(cmd)
+    cmd = f"bwa mem -t {threads} {input_assembly} {input_reads} | samtools sort -o {output_bam}"
+    run_cmd(cmd)
+    cmd = f"samtools index {output_bam}"
+    run_cmd(cmd)
+
+
+@run_in_tempdir
+def job_concatenate_ont_bams(
+    input_dir: FullPath,
+    output_dir: FullPath,
+    id_csv_file: FullPath,
+    **kwargs
+) -> None:
+    """Concatenate BAM files from multiple ONT barcodes into a single BAM per sample.
+    
+    This function takes a directory containing subdirectories for each barcode, each with a BAM file of mapped reads. It concatenates the BAM files for all barcodes corresponding to the same sample into a single BAM file per sample in the output directory. The barcode list file is used to determine which barcodes belong to which samples.
+
+    Args:
+        input_dir (FullPath): Path to input directory containing subdirectories for each barcode with BAM files.
+        output_dir (FullPath): Path where concatenated BAM files will be written, one per sample.
+        id_csv_file (FullPath): Path to a TSV file mapping barcodes to sample IDs. Columns: barcode, sample_id.
+        **kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    logging.info(f"Concatenating ONT BAM files from {input_dir} into {output_dir} using ID CSV file {id_csv_file}")
+    
+    # Read ID CSV file
+    barcode_to_sample = {}
+    with open(id_csv_file, encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            barcode = row["barcode"]
+            sample_id = row["sample_id"]
+            barcode_to_sample[barcode] = sample_id
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Group BAM files by sample ID based on barcode
+    sample_to_bams = defaultdict(list)
+    for barcode, sample_id in barcode_to_sample.items():
+        bam_files = glob(os.path.join(input_dir, barcode, "*.bam"))
+        if not bam_files:
+            logging.warning(f"BAM file not found for barcode {barcode} at expected path {os.path.join(input_dir, barcode, '*.bam')}")
+        else:
+            sample_to_bams[sample_id].extend(bam_files)
+
+    # Concatenate BAM files for each sample
+    for sample_id, bam_files in sample_to_bams.items():
+        output_bam = os.path.join(output_dir, f"{sample_id}.bam")
+        if len(bam_files) == 1:
+            # If only one BAM file, just copy it
+            shutil.copy(bam_files[0], output_bam)
+            logging.info(f"Copied single BAM for sample {sample_id} to {output_bam}")
+        else:
+            with tempfile.NamedTemporaryFile() as tmp_bam_list:
+                for bam in bam_files:
+                    tmp_bam_list.write(f"{bam}\n".encode())
+                tmp_bam_list.flush()
+                cmd = f"samtools merge -f -b {tmp_bam_list.name} {output_bam}"
+                run_cmd(cmd)
+                logging.info(f"Concatenated BAM files for sample {sample_id} into {output_bam}")
