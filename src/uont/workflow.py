@@ -216,12 +216,12 @@ def wf_assemble(
     
     selected_outputs = {
         filtered_fastq: f"{output_dir}/filtered_reads.fastq.gz",
-        reoriented_assembly_file: f"{output_dir}/final_assembly.fasta",
+        reoriented_assembly_file: f"{output_dir}/contigs.fasta",
         qc_results_file: f"{output_dir}/qc_results.json",
     }
 
     if lab_id:
-        selected_outputs[reoriented_assembly_file] = f"{output_dir}/{lab_id}_polished_assembly.fasta"
+        selected_outputs[reoriented_assembly_file] = f"{output_dir}/{lab_id}.contigs.fasta"
     
     for src, dst in selected_outputs.items():
         logging.info(f"Copying {src} to {dst}")
@@ -230,8 +230,8 @@ def wf_assemble(
     if link_id:
         if not os.path.exists(link_directory):
             os.makedirs(link_directory)
-        logging.info(f"Creating symlink for final assembly at {link_directory}/{link_id}_polished_assembly.fasta")
-        os.symlink(f"{reoriented_assembly_file}", f"{link_directory}/{link_id}_polished_assembly.fasta")
+        logging.info(f"Creating symlink for final assembly at {link_directory}/{link_id}.contigs.fasta")
+        os.symlink(f"{reoriented_assembly_file}", f"{link_directory}/{link_id}.contigs.fasta")
 
     logging.info(f"Assembly workflow completed. Final assembly: {selected_outputs[reoriented_assembly_file]}")
 
