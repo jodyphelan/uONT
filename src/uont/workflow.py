@@ -135,8 +135,6 @@ def wf_assemble(
         raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
     
     make_dir_if_not_exists(f"{output_dir}/")
-
-
     # 1. Filter reads
     filtered_fastq = f"filtered.fastq.gz"
     job_ont_pre_assembly_qc(
@@ -181,6 +179,7 @@ def wf_assemble(
         polishing_tool=tools.polishing,
         bam_for_dorado=kwargs.get("bam_for_dorado", None),
         models_path=kwargs.get("models_directory", None),
+        medaka_batch_size=kwargs.get("batch_size", None),
     )
 
     reoriented_assembly_file = f"polished_assembly_reoriented.fasta"
