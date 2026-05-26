@@ -15,6 +15,7 @@ from glob import glob
 import json
 import os
 import logging
+import random
 import tempfile
 import shutil
 import pysam
@@ -1080,3 +1081,26 @@ def job_concatenate_ont_bams(
             cmd = f"samtools fastq {output_bam} | pigz -p {threads} -c > {output_fastq}"
             run_cmd(cmd)
             logging.info(f"Wrote FASTQ for sample {sample_id} to {output_fastq}")
+
+
+
+def job_create_fake_asm(
+    output_dir: FullPath,
+    lab_id: str
+):
+    """Create a fake assembly FASTA file for testing purposes.
+    
+    This function generates a simple FASTA file with a single contig of 100 kb, consisting of random DNA sequence. The output FASTA file is written to the specified output directory.
+
+    Args:
+        output_dir (FullPath): Path where the fake assembly FASTA file will be written.
+    Returns:
+        None
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    output_fasta = os.path.join(output_dir, f"{lab_id}.contigs.fasta")
+    with open(output_fasta, "w") as O:
+        O.write(f">{lab_id}_contig1\n")
+        O.write("".join(random.choices("ACGT", k=100000)) + "\n")
+    logging.info(f"Created fake assembly FASTA at {output_fasta}")
+
