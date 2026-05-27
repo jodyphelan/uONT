@@ -7,7 +7,7 @@ import logging
 from importlib import import_module
 import shutil
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
     
 from .jobs import job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_qc_python, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst
@@ -24,7 +24,7 @@ from .process import (
     process_remove_adapters,
 )
 
-from .utils import run_in_tempdir
+from .utils import run_in_tempdir, get_filetype
 
 
 def make_dir_if_not_exists(directory: str) -> None:
@@ -41,11 +41,12 @@ def make_dir_if_not_exists(directory: str) -> None:
 
 @run_in_tempdir
 def wf_scrub(
-    input_fastq: FullPath,
-    output_fastq: FullPath,
+    input_reads: FullPath,
+    output_reads: FullPath,
     tools: SimpleNamespace,
     threads: int = 4,
     dehumanise: bool = True,
+    sequencing_kit: Optional[str] = None,
     **kwargs
 ) -> None:
     """Run a QC workflow on raw reads.
@@ -62,31 +63,42 @@ def wf_scrub(
     Returns:
         None
     """
-    logging.info(f"Starting QC workflow with input {input_fastq}")
+    logging.info(f"Starting QC workflow with input {input_reads}")
 
     # 1. Filter reads
-    filtered_fastq = f"filtered.fastq.gz"
-    job_remove_adapters_porechop(
-        input_fastq=input_fastq,
-        output_fastq=filtered_fastq,
+    input_filetype = get_filetype(input_reads)
+
+    if input_filetype == "bam":
+        filtered_reads = f"filtered.bam"
+    else:
+        filtered_reads = f"filtered.fastq.gz"
+
+    process_remove_adapters(
+        input_reads=input_reads,
+        output_reads=filtered_reads,
+        tool=tools.adapter_removal,
+        sequencing_kit=sequencing_kit,
         threads=threads,
     )
-    # 2. Dehumanise reads
-    dehumanised_fastq = f"dehumanised.fastq.gz"
-    if dehumanise:
-        job_dehumanise_hostile(
-            input_fastq=filtered_fastq,
-            output_fastq=dehumanised_fastq,
-            threads=threads,
-        )
-        final_fastq = dehumanised_fastq
-    else:
-        final_fastq = filtered_fastq
+
+    
+
+    # # 2. Dehumanise reads
+    # dehumanised_fastq = f"dehumanised.fastq.gz"
+    # if dehumanise:
+    #     job_dehumanise_hostile(
+    #         input_fastq=filtered_reads,
+    #         output_fastq=dehumanised_fastq,
+    #         threads=threads,
+    #     )
+    #     final_fastq = dehumanised_fastq
+    # else:
+    #     final_fastq = filtered_reads
 
     # 3. Move selected outputs to final output directory
-    shutil.move(final_fastq, output_fastq)
+    shutil.move(filtered_reads, output_reads)
 
-    logging.info(f"QC workflow completed. Filtered reads written to {output_fastq}")
+    logging.info(f"QC workflow completed. Filtered reads written to {output_reads}")
 
 @run_in_tempdir
 def wf_assemble(

@@ -274,16 +274,16 @@ def cli_uONT():
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )
     scrub_wf_parser.add_argument(
-        "--input-fastq",
+        "--input-reads",
         type=file_path,
         required=True,
-        help="Input fastq file containing the raw reads",
+        help="Input HTS (bam or fastq) file containing the raw reads",
     )
     scrub_wf_parser.add_argument(
-        "--output-fastq",
+        "--output-reads",
         type=file_path,
         required=True,
-        help="Output fastq file for the scrubbed reads",
+        help="Output HTS (bam or fastq) file for the scrubbed reads",
     )
     scrub_wf_parser.add_argument(
         "--threads",
@@ -292,9 +292,21 @@ def cli_uONT():
         help="The number of threads to use for read scrubbing",
     )
     scrub_wf_parser.add_argument(
-        "--no-dehumanise",
+        "--dehumanise",
         action="store_true",
-        help="If set, the dehumanisation step will be skipped and only adapter removal will be performed",
+        help="If set, the dehumanisation step will be performed",
+    )
+    scrub_wf_parser.add_argument(
+        "--sequencing-kit",
+        type=str,
+        help="Sequencing kit to use for dorado adapter removal (required if the adapter removal tool is set to dorado)",
+    )
+    scrub_wf_parser.add_argument(
+        "--adapter-removal-tool",
+        type=str,
+        default="dorado",
+        choices=["porechop","dorado"],
+        help="The tool to use for adapter removal in the scrubbing workflow",
     )
 
 
@@ -759,11 +771,12 @@ def cli_uONT():
         elif args.workflow_command == "scrub":
             tools = initialise_tools(args)
             wf_scrub(
-                input_fastq=args.input_fastq,
-                output_fastq=args.output_fastq,
+                input_reads=args.input_reads,
+                output_reads=args.output_reads,
                 tools=tools,
                 threads=args.threads,
-                dehumanise=not args.no_dehumanise,
+                dehumanise=args.dehumanise,
+                sequencing_kit=args.sequencing_kit,
             )
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)

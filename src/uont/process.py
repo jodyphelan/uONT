@@ -15,8 +15,8 @@ import sys
 import pandas as pd
 from dataclasses import dataclass
 from tqdm import tqdm
-from typing import Literal
-from .utils import run_cmd, run_in_tempdir
+from typing import Literal, Optional
+from .utils import get_filetype, run_cmd, run_in_tempdir
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
@@ -24,7 +24,8 @@ from .jobs import (
     job_consensus_medaka,
     job_estimate_genome_size_autocycler, 
     job_fastq_filter_chopper,
-    job_polish_dorado, 
+    job_polish_dorado,
+    job_remove_adapters_dorado, 
     job_remove_adapters_porechop, 
     job_downsample_filtlong,
     job_polish_medaka,
@@ -176,17 +177,19 @@ def process_fastq_filter(
 
 
 def process_remove_adapters(
-    input_fastq: FullPath,
-    output_fastq: FullPath,
-    tool: Literal["porechop"] = "porechop",
+    input_reads: FullPath,
+    output_reads: FullPath,
+    sequencing_kit: Optional[str] = None,
+    tool: Literal["porechop","dorado"] = "dorado",
     threads: int = 4,
 ) -> None:
     """Remove sequencing adapters from reads.
     
     Args:
-        input_fastq (FullPath): Path to input fastq file.
-        output_fastq (FullPath): Path to output adapter-trimmed fastq file.
-        tool (Literal["porechop"]): Adapter removal tool to use. Defaults to "porechop".
+        input_reads (FullPath): Path to input reads file.
+        output_reads (FullPath): Path to output adapter-trimmed reads file.
+        sequencing_kit (str, optional): Sequencing kit to use for dorado. Required if tool is "dorado".
+        tool (Literal["porechop","dorado"]): Adapter removal tool to use. Defaults to "dorado".
         threads (int): Number of threads to use. Defaults to 4.
     
     Raises:
@@ -194,7 +197,14 @@ def process_remove_adapters(
     """
     
     if tool == "porechop":
-        job_remove_adapters_porechop(input_fastq, output_fastq, threads)
+        filetype = get_filetype(input_reads)
+        if filetype=="bam":
+            raise ValueError("Porechop does not support BAM input. Please provide reads in FASTQ format or choose dorado for adapter removal.")
+        job_remove_adapters_porechop(input_reads, output_reads, threads)
+    elif tool == "dorado":
+        if sequencing_kit is None:
+            raise ValueError("Sequencing kit must be specified when using dorado for adapter removal.")
+        job_remove_adapters_dorado(input_reads, output_reads, sequencing_kit, threads)
     else:
         raise ValueError(f"Tool {tool} not supported for adapter removal.")
 

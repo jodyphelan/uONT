@@ -18,13 +18,14 @@ import logging
 import random
 import tempfile
 import shutil
+import gzip
 import pysam
 import numpy as np
 from tqdm import tqdm
 import platform
 import subprocess as sp
 from typing import Tuple
-from .utils import run_cmd, run_in_tempdir, timeit
+from .utils import get_filetype, run_cmd, run_in_tempdir, timeit
 from .types import FullPath
 from .qc import Fasta
 
@@ -1104,3 +1105,47 @@ def job_create_fake_asm(
         O.write("".join(random.choices("ACGT", k=100000)) + "\n")
     logging.info(f"Created fake assembly FASTA at {output_fasta}")
 
+def job_create_fake_fastq(
+    output_fastq: FullPath,
+):
+    """Create a fake FASTQ file for testing purposes.
+    """
+
+    output_dir = os.path.dirname(output_fastq)
+    os.makedirs(output_dir, exist_ok=True)
+    fastq_file = os.path.join(output_dir, output_fastq)
+
+    
+    with gzip.open(fastq_file, "wb") as O:
+        O.write(b"")
+
+@run_in_tempdir
+def job_remove_adapters_dorado(
+    input_reads: FullPath,
+    output_reads: FullPath,
+    sequencing_kit: str,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Remove adapters from reads using dorado.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file with reads.
+        output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+
+    Returns:
+        None
+    """
+    filetype = get_filetype(input_reads)
+    if filetype == "bam":
+        tempfile = 'trimmed.bam'
+        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} > {tempfile}"
+    elif filetype == "fastq.gz":
+        tempfile = 'trimmed.fastq.gz'
+        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} --emit-fastq | pigz -p {threads} -c > {tempfile}"
+
+    run_cmd(cmd)
+
+    shutil.move(tempfile, output_reads)

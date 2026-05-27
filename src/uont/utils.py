@@ -208,3 +208,14 @@ def run_in_tempdir(func):
             os.chdir(cwd)
             shutil.rmtree(tmpdir, ignore_errors=True)
     return wrapper
+
+
+
+def get_filetype(input_file):
+    res = sp.run(f"htsfile {input_file}", shell=True, capture_output=True, text=True).stdout.strip()
+    if "FASTQ gzip-compressed sequence data" in res:
+        return "fastq.gz"
+    elif "BAM version 1 compressed sequence data" in res:
+        return "bam"
+    else:
+        raise ValueError(f"Unsupported file type for {input_file}: {res}")
