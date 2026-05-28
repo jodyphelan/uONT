@@ -1083,7 +1083,23 @@ def job_concatenate_ont_bams(
             run_cmd(cmd)
             logging.info(f"Wrote FASTQ for sample {sample_id} to {output_fastq}")
 
+def job_bam_to_fastq(
+        input_bam: str,
+        output_fastq: str,
+        threads: int = 4
+):
+    """Convert BAM file to FASTQ format.
+    
+    Args:
+        input_bam (str): Path to input BAM file.
+        output_fastq (str): Path where output FASTQ file will be written.
+        threads (int): Number of threads to use. Defaults to 4.
 
+    Returns:
+        None
+    """
+    cmd = f"samtools fastq {input_bam} | pigz -p {threads} -c > {output_fastq}"
+    run_cmd(cmd)
 
 def job_create_fake_asm(
     output_dir: FullPath,

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_qc_python, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst
+from .jobs import job_bam_to_fastq, job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_qc_python, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst
 from .types import FullPath
 
 from .process import (
@@ -63,6 +63,7 @@ def wf_scrub(
     Returns:
         None
     """
+    
     logging.info(f"Starting QC workflow with input {input_reads}")
 
     # 1. Filter reads
@@ -102,7 +103,7 @@ def wf_scrub(
 
 @run_in_tempdir
 def wf_assemble(
-    input_fastq: FullPath,
+    input_reads: FullPath,
     output_dir: FullPath,
     tools: SimpleNamespace,
     threads: int = 4,
@@ -127,7 +128,7 @@ def wf_assemble(
         5. Reorient the polished assembly to start at dnaA using dnaapler.
 
     Args:
-        input_fastq (FullPath): Path to the input raw fastq file.
+        input_reads (FullPath): Path to the input raw reads file (bam or fastq).
         output_dir (FullPath): Base output directory for workflow outputs.
         tools (SimpleNamespace): Tool selections (fastq_filter, genome_size_estimation,
             read_downsampling, assembler, polishing).
@@ -141,12 +142,23 @@ def wf_assemble(
     Returns:
         None
     """
-    logging.info(f"Starting assembly with input {input_fastq}")
+    logging.info(f"Starting assembly with input {input_reads} and output directory {output_dir}")
+    make_dir_if_not_exists(f"{output_dir}/")
     
     if tools.polishing == "dorado" and not kwargs.get("bam_for_dorado"):
         raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
     
-    make_dir_if_not_exists(f"{output_dir}/")
+    if get_filetype(input_reads) == "bam":
+        input_fastq = f"input_reads.fastq.gz"
+        job_bam_to_fastq(
+            input_bam=input_reads,
+            output_fastq=input_fastq,
+            threads=threads,
+        )
+    else:
+        input_fastq = input_reads
+
+        
     # 1. Filter reads
     filtered_fastq = f"filtered.fastq.gz"
     job_ont_pre_assembly_qc(

@@ -202,6 +202,11 @@ def cli_uONT():
         help="Path to YAML configuration file with tool parameters. Command-line arguments will override config file settings.",
     )
     parent_parser.add_argument(
+        "--test",
+        type=str,
+        help="Make a fake output file for workflow testing. Provide the path to the output file to create.",
+    )
+    parent_parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s " + uont_version,
@@ -322,10 +327,10 @@ def cli_uONT():
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )
     assemble_wf_parser.add_argument(
-        "--input-fastq", 
+        "--input-reads", 
         type=file_path, 
         required=True, 
-        help="Input fastq file"
+        help="Input reads file (bam or fastq)"
     )
     assemble_wf_parser.add_argument(
         "--output-dir",
@@ -336,8 +341,8 @@ def cli_uONT():
     assemble_wf_parser.add_argument(
         "--adapter-removal-tool",
         type=str,
-        default="porechop",
-        choices=["porechop"],
+        default="dorado",
+        choices=["porechop","dorado"],
         help="The tool to use for adapter removal",
     )
     assemble_wf_parser.add_argument(
@@ -790,7 +795,7 @@ def cli_uONT():
                 logging.error("If --link-id is provided, --link-directory must also be provided. Exiting.")
                 sys.exit(1)
             wf_assemble(
-                input_fastq=args.input_fastq,
+                input_reads=args.input_reads,
                 output_dir=args.output_dir,
                 tools=tools,
                 threads=args.threads,
