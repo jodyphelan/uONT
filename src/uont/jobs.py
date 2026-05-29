@@ -170,7 +170,7 @@ def job_ont_pre_assembly_qc(
     """
     logging.info(f"Running basic filtering on {input_fastq} with output {output_fastq} using {threads} threads.")
     # chopper
-    cmd = f"gunzip -c {input_fastq} | chopper --minlength {minreadlen} --quality {quality} --headcrop {headcrop} --tailcrop {tailcrop} -t {threads} > intermediate.fastq"
+    cmd = f"gunzip -c {input_fastq} | chopper --trim-approach fixed-crop --minlength {minreadlen} --quality {quality} --headcrop {headcrop} --tailcrop {tailcrop} -t {threads} > intermediate.fastq"
     run_cmd(cmd)
     # filtlong
     cmd = f"filtlong --min_length {minreadlen} --keep_percent {keeppercent} intermediate.fastq | pigz -p {threads} -c > {output_fastq}"
@@ -1135,33 +1135,33 @@ def job_create_fake_fastq(
     with gzip.open(fastq_file, "wb") as O:
         O.write(b"")
 
-@run_in_tempdir
-def job_remove_adapters_dorado(
-    input_reads: FullPath,
-    output_reads: FullPath,
-    sequencing_kit: str,
-    threads: int = 4,
-    **kwargs
-) -> None:
-    """Remove adapters from reads using dorado.
+# @run_in_tempdir
+# def job_remove_adapters_dorado(
+#     input_reads: FullPath,
+#     output_reads: FullPath,
+#     sequencing_kit: str,
+#     threads: int = 4,
+#     **kwargs
+# ) -> None:
+#     """Remove adapters from reads using dorado.
     
-    Args:
-        input_fastq (FullPath): Path to input fastq file with reads.
-        output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
-        threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+#     Args:
+#         input_fastq (FullPath): Path to input fastq file with reads.
+#         output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
+#         threads (int): Number of threads to use. Defaults to 4.
+#         kwargs (dict[str, object]): Additional options for interface symmetry.
 
-    Returns:
-        None
-    """
-    filetype = get_filetype(input_reads)
-    if filetype == "bam":
-        tempfile = 'trimmed.bam'
-        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} > {tempfile}"
-    elif filetype == "fastq.gz":
-        tempfile = 'trimmed.fastq.gz'
-        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} --emit-fastq | pigz -p {threads} -c > {tempfile}"
+#     Returns:
+#         None
+#     """
+#     filetype = get_filetype(input_reads)
+#     if filetype == "bam":
+#         tempfile = 'trimmed.bam'
+#         cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} > {tempfile}"
+#     elif filetype == "fastq.gz":
+#         tempfile = 'trimmed.fastq.gz'
+#         cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} --emit-fastq | pigz -p {threads} -c > {tempfile}"
 
-    run_cmd(cmd)
+#     run_cmd(cmd)
 
-    shutil.move(tempfile, output_reads)
+#     shutil.move(tempfile, output_reads)
