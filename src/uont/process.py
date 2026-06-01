@@ -31,7 +31,6 @@ from .jobs import (
     job_estimate_genome_size_lrge,
     job_variant_calling_bcftools,
     job_dehumanise_hostile,
-    job_qc_python,
     job_rmlst
 )
 from .types import FullPath
@@ -415,6 +414,6 @@ def process_test(
 ):
     qc_file = 'qc_metrics.tsv'
     rmlst_file = 'rmlst_results.tsv'
-    job_qc_python(input_fasta, qc_file)
+    # job_qc_python(input_fasta, qc_file)
     job_rmlst(input_fasta, rmlst_file)
     process_collect_qc_results(qc=qc_file, rmlst=rmlst_file, output_file=output_file)

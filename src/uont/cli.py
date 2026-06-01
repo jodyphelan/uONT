@@ -15,6 +15,7 @@ from typing import get_args, get_origin, Literal
 import yaml
 from .types import FullPath
 from .utils import check_cli_dependencies, DEFAULT_CLI_DEPENDENCIES
+from .utils import g
 
 from .process import (
     process_collate_barcode_fastqs,
@@ -25,9 +26,12 @@ from .workflow import (
     wf_amplicon,
     run_configured_workflow,
     wf_scrub,
+    wf_test,
 )
 
 from uont import __version__ as uont_version
+
+g['uont_version'] = uont_version
 
 def _fullpath_constructor(loader: yaml.Loader, node: yaml.Node) -> FullPath:
     value = loader.construct_scalar(node)
@@ -530,6 +534,19 @@ def cli_uONT():
         help="Output directory for the collated amplicon mapping stats CSV",
     )
 
+    test_wf_parser = workflow_subparsers.add_parser(
+        "test",
+        help="Run a test workflow to generate fake output files for testing the CLI",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
+    test_wf_parser.add_argument(
+        "--output-dir",
+        type=file_path,
+        required=True,
+        help="Output directory for the test workflow results",
+    )
+
     run_config_parser = workflow_subparsers.add_parser(
         "run-config-workflow",
         help="Execute a workflow described in a YAML configuration file",
@@ -751,6 +768,8 @@ def cli_uONT():
     
     args = parser.parse_args()
 
+    g['input_command'] = " ".join(sys.argv)
+
     configure_logging(debug=args.debug, log_file=args.log_file)
 
     config_data = load_yaml_config(args.config) if args.config else None
@@ -777,7 +796,7 @@ def cli_uONT():
                 threads=args.threads,
                 dehumanise=args.dehumanise,
             )
-            
+
         elif args.workflow_command == "assemble":
             tools = initialise_tools(args)
 
@@ -830,6 +849,8 @@ def cli_uONT():
                 input_directories=input_directories,
                 output_dir=args.output_dir,
             )
+        elif args.workflow_command == "test":
+            wf_test(output_dir=args.output_dir)
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)
         else:

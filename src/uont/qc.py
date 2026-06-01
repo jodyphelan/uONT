@@ -1,5 +1,5 @@
 import pysam
-from .types import FullPath 
+from .types import FullPath, QCMetrics
 
 
 def get_sequence_name_from_filename(fasta_file):
@@ -55,22 +55,29 @@ class Fasta:
     
     def gc_content(self) -> float:
         gc_count = self.all_sequence.count("G") + self.all_sequence.count("C")
-        return gc_count / len(self.all_sequence) if len(self.all_sequence) > 0 else 0
+        gc_content = gc_count / len(self.all_sequence) if len(self.all_sequence) > 0 else 0
+        return round(gc_content*100,2)
     
     def Ns_per_kb(self) -> float:
         n_count = self.all_sequence.count("N")
         return n_count / (len(self.all_sequence) / 1000) if len(self.all_sequence) > 0 else 0
     
-    def qc_metrics(self, min_contig_length: int = 0) -> dict:
+    def qc_metrics(self, min_contig_length: int = 0) -> QCMetrics:
 
-        metrics = {
-            "length": len(self.all_sequence),
-            "gc_content": self.gc_content(),
-            "Ns_per_kb": self.Ns_per_kb(),
-            "num_contigs": self.num_contigs(min_contig_length),
-            "n50": self.n50(),
-            "l90": self.l90()
-        }
+        metrics = QCMetrics(
+            reads_total_number=None,
+            reads_n50=None,
+            reads_total_bases=None,
+            contigs_total_length=len(self.all_sequence),
+            contigs_total_number=self.num_contigs(min_contig_length),
+            contigs_n50=self.n50(),
+            contigs_l90=self.l90(),
+            contigs_Ns_per_kb=self.Ns_per_kb(),
+            contigs_gc_content=self.gc_content(),
+            genome_size_estimate=None,
+            genome_depth_estimate=None
+        )
+
         
         return metrics
     

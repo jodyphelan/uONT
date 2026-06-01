@@ -11,6 +11,7 @@ command line if desired.
 
 from collections import defaultdict
 import csv
+import datetime
 from glob import glob
 import json
 import os
@@ -25,9 +26,10 @@ from tqdm import tqdm
 import platform
 import subprocess as sp
 from typing import Tuple
-from .utils import get_filetype, run_cmd, run_in_tempdir, timeit
-from .types import FullPath
+from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, update_dataclass
+from .types import FullPath, QCMetrics
 from .qc import Fasta
+
 
 
 
@@ -494,7 +496,7 @@ def job_polish_medaka(
     input_assembly: FullPath,
     output_assembly: FullPath,
     threads: int = 4,
-    batch_size: int = 100,
+    medaka_batch_size: int = 100,
     **kwargs
 ) -> None:
     """Polish an assembly twice using medaka consensus.
@@ -520,7 +522,7 @@ def job_polish_medaka(
     tmp_dir1 = os.path.join(tmp_dir, "round1")
     os.makedirs(tmp_dir1, exist_ok=True)
     # Round 1: Polish original assembly
-    cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
+    cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {medaka_batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1} --bacteria"
     # run command and check check stdout for "ERROR"
     result1 = sp.run(cmd_round1, shell=True, capture_output=True, text=True)
     bacteria_model_working = True
@@ -528,7 +530,7 @@ def job_polish_medaka(
         if "ERROR: --bacteria was specified but input data was not compatible." in result1.stdout:
             logging.warning("Medaka round 1 failed with --bacteria model. Retrying without --bacteria flag.")
             bacteria_model_working = False
-            cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -f -b {batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
+            cmd_round1 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -f -b {medaka_batch_size} -t {threads} -i {input_reads} -d {input_assembly} -o {tmp_dir1}"
             run_cmd(cmd_round1)
         else:
             logging.error(f"Medaka round 1 failed with error:\n{result1.stdout}")
@@ -538,9 +540,9 @@ def job_polish_medaka(
     os.makedirs(tmp_dir2, exist_ok=True)
     if bacteria_model_working:
         logging.info(f"Running medaka polishing (round 2) with bacteria model for {tmp_dir1}/consensus.fasta")
-        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
+        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -b {medaka_batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2} --bacteria"
     else:
-        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -f -b {batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
+        cmd_round2 = f"OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 medaka_consensus -f -b {medaka_batch_size} -t {threads} -i {input_reads} -d {tmp_dir1}/consensus.fasta -o {tmp_dir2}"
     run_cmd(cmd_round2)
 
     shutil.move(f"{tmp_dir2}/consensus.fasta", output_assembly)
@@ -693,31 +695,77 @@ def job_dehumanise_hostile(
         cmd = f"pigz -p {threads} {output_fastq}"
         run_cmd(cmd)
 
-
-def job_qc_python(
-    input_fasta: FullPath,
-    output_tsv: FullPath,
-    sample_id: str = None,
+@run_in_tempdir
+def get_fastq_QC_metrics(
+    input_fastq: FullPath,
+    min_read_length: int = 1000,
     **kwargs
-) -> None:
-    """Run QC on reads using a Python-based approach.
-    
-    This is a placeholder for a custom QC implementation that could be developed
-    in Python, potentially using libraries like Biopython or SeqIO to analyze
-    read quality and length distributions, and output a QC report.
+) -> QCMetrics:
+    metrics = QCMetrics()
+    seqkit_stats_file = f"seqkit_stats.tsv"
+    cmd = f"seqkit stats -Ta {input_fastq} > {seqkit_stats_file}"
+    run_cmd(cmd)
+    for row in csv.DictReader(open(seqkit_stats_file),delimiter="\t"):
+        pass
+    metrics.reads_n50 = int(row["N50"])
+    metrics.reads_total_number = int(row["num_seqs"])
+    metrics.reads_total_bases = int(row["sum_len"])
+    return metrics
+
+@run_in_tempdir
+def job_get_qc_metrics(
+    input_reads: FullPath,
+    input_fasta: FullPath,
+    min_contig_length: int = 1000,
+    **kwargs
+) -> QCMetrics:
+    """
+    Calculate QC metrics for both reads and contigs, and combine into a single QCMetrics dataclass.
 
     Args:
-        input_fasta (FullPath): Path to input fasta file with reads.
-        output_tsv (FullPath): Path where QC report will be written.
-        sample_id (str): Sample identifier. Defaults to None.
+        input_reads (FullPath): Path to input fastq file with reads.
+        input_fasta (FullPath): Path to input assembly fasta file with contigs.
+        min_contig_length (int): Minimum contig length to consider for metrics. Defaults to
+        1000.
         kwargs (dict[str, object]): Additional options for interface symmetry.
-
     Returns:
-        None
+        QCMetrics: Dataclass containing combined QC metrics for reads and contigs.
     """
-    logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_tsv}")
-    fasta = Fasta(input_fasta, sample_id=sample_id)
-    fasta.write_qc_report(output_file=output_tsv)
+    fasta = Fasta(input_fasta)
+    contig_metrics = fasta.qc_metrics(min_contig_length)
+    reads_metrics = get_fastq_QC_metrics(input_reads, min_read_length=min_contig_length)
+
+    metrics = update_dataclass(contig_metrics, reads_metrics)
+
+    metrics.genome_depth_estimate = metrics.reads_total_bases / metrics.contigs_total_length
+
+    return metrics
+
+
+# def job_qc_python(
+#     input_fasta: FullPath,
+#     output_tsv: FullPath,
+#     sample_id: str = None,
+#     **kwargs
+# ) -> None:
+#     """Run QC on reads using a Python-based approach.
+    
+#     This is a placeholder for a custom QC implementation that could be developed
+#     in Python, potentially using libraries like Biopython or SeqIO to analyze
+#     read quality and length distributions, and output a QC report.
+
+#     Args:
+#         input_fasta (FullPath): Path to input fasta file with reads.
+#         output_tsv (FullPath): Path where QC report will be written.
+#         sample_id (str): Sample identifier. Defaults to None.
+#         kwargs (dict[str, object]): Additional options for interface symmetry.
+
+#     Returns:
+#         None
+#     """
+#     logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_tsv}")
+#     fasta = Fasta(input_fasta, sample_id=sample_id)
+#     fasta.write_qc_report(output_file=output_tsv)
 
 
 
@@ -1165,3 +1213,76 @@ def job_create_fake_fastq(
 #     run_cmd(cmd)
 
 #     shutil.move(tempfile, output_reads)
+
+
+@run_in_tempdir
+def job_write_report(
+    input_reads: FullPath,
+    input_fasta: FullPath,
+    output_report: FullPath,
+    **kwargs
+):
+    qc = job_get_qc_metrics(
+        input_reads=input_reads,
+        input_fasta=input_fasta,
+    )
+    d = {
+        "uONT version": g['uont_version'],
+        "input command": g['input_command'],
+        "timestamp": datetime.datetime.now().isoformat(),
+
+    }
+    d.update(qc.__dict__)
+    with open(output_report, "w") as O:
+        json.dump(d, O, indent=4)
+
+# def job_docx_report(
+#     input_reads: FullPath,
+#     input_assembly: FullPath,
+#     tempplace_docx: FullPath,
+#     output_docx: FullPath
+# ):
+#     """Generate a DOCX report from input data.
+    
+#     This is a placeholder function that demonstrates how to create a DOCX report using the python-docx library. The input data is expected to be a dictionary containing various pieces of information that should be included in the report. The function creates a simple DOCX file with some of the input data formatted as text.
+
+#     Args:
+#         input_reads (dict): Dictionary containing reads data to include in the report.
+#         input_assembly (dict): Dictionary containing assembly data to include in the report.
+#         output_docx (FullPath): Path where the generated DOCX report will be written.
+
+
+def job_docx_report(
+    run_report_json: FullPath,
+    template_docx: FullPath,
+    output_docx: FullPath,
+    additional_data: str = None,
+    **kwargs
+):
+    """Generate a DOCX report from a JSON report.
+    
+    This function reads a JSON report generated by the pipeline, extracts relevant information, and creates a DOCX report using the python-docx library. The DOCX report includes sections for input data, QC metrics, and other relevant information formatted as text.
+
+    Args:
+        run_report_json (FullPath): Path to input JSON file containing the report data.
+        template_docx (FullPath): Path to the DOCX template file.
+        output_docx (FullPath): Path where the final generated DOCX report will be written.
+    Returns:
+        None
+    """
+
+    # using docxtpl to generate a docx report from a template, using the data from the json report
+    from docxtpl import DocxTemplate
+    with open(run_report_json) as f:
+        data = json.load(f)
+    
+    context = {'d':data}
+
+    if additional_data:
+        for s in additional_data.split(","):
+            key, value = s.split("=")
+            context['d'][key] = value
+    print(context)
+    tpl = DocxTemplate(template_docx)
+    tpl.render(context)
+    tpl.save(output_docx)

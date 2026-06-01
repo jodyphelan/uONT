@@ -9,6 +9,7 @@ import functools
 import inspect
 import time
 from .types import FullPath
+from dataclasses import fields
 
 
 DEFAULT_CLI_DEPENDENCIES = [
@@ -219,3 +220,19 @@ def get_filetype(input_file):
         return "bam"
     else:
         raise ValueError(f"Unsupported file type for {input_file}: {res}")
+
+
+
+g = {}
+
+
+
+def update_dataclass(target, source):
+    if type(target) is not type(source):
+        raise TypeError("Both objects must be the same dataclass type")
+
+    for field in fields(target):
+        if getattr(source, field.name) is not None:
+            setattr(target, field.name, getattr(source, field.name))
+
+    return target

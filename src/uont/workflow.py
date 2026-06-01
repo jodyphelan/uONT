@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import job_bam_to_fastq, job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_qc_python, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst
+from .jobs import job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_write_report
 from .types import FullPath
 
 from .process import (
@@ -24,7 +24,7 @@ from .process import (
     process_remove_adapters,
 )
 
-from .utils import run_in_tempdir, get_filetype
+from .utils import run_in_tempdir, get_filetype, g
 
 
 def make_dir_if_not_exists(directory: str) -> None:
@@ -65,6 +65,9 @@ def wf_scrub(
     """
     
     logging.info(f"Starting QC workflow with input {input_reads}")
+    g['workflow'] = 'qc'
+
+    
 
     # 1. Filter reads
     input_filetype = get_filetype(input_reads)
@@ -214,33 +217,39 @@ def wf_assemble(
         threads=threads,
     )
 
-    # 6. calculate assembly stats
-    assembly_stats_file = f"assembly_stats.tsv"
-    job_qc_python(
-        input_fasta=reoriented_assembly_file,
-        output_tsv=assembly_stats_file,
-    )
+    # assembly_stats_file = f"assembly_stats.tsv"
+    # job_qc_python(
+    #     input_fasta=reoriented_assembly_file,
+    #     output_tsv=assembly_stats_file,
+    # )
 
-    rmlst_result_file = None
-    if rmlst:
-        rmlst_result_file = f"rmlst.tsv"
-        job_rmlst(
-            input_fasta=reoriented_assembly_file,
-            output_tsv=rmlst_result_file,
-        )
+    # rmlst_result_file = None
+    # if rmlst:
+    #     rmlst_result_file = f"rmlst.tsv"
+    #     job_rmlst(
+    #         input_fasta=reoriented_assembly_file,
+    #         output_tsv=rmlst_result_file,
+    #     )
 
-    qc_results_file = f"qc_results.json"
-    process_collect_qc_results(
-        sample_name=lab_id if lab_id else "sample",
-        output_file=qc_results_file,
-        qc=assembly_stats_file,
-        rmlst=rmlst_result_file,
-    )
+    # process_collect_qc_results(
+    #     sample_name=lab_id if lab_id else "sample",
+    #     output_file=qc_results_file,
+    #     qc=assembly_stats_file,
+    #     rmlst=rmlst_result_file,
+    # )
     
+    # 6. write report
+    run_report_file = f"run_report.json"
+    job_write_report(
+        input_reads=filtered_fastq,
+        input_fasta=reoriented_assembly_file,
+        output_report=run_report_file,
+    )
+
     selected_outputs = {
         filtered_fastq: f"{output_dir}/filtered_reads.fastq.gz",
         reoriented_assembly_file: f"{output_dir}/contigs.fasta",
-        qc_results_file: f"{output_dir}/qc_results.json",
+        run_report_file: f"{output_dir}/run_report.json",
     }
 
     if lab_id:
@@ -414,3 +423,10 @@ def wf_collate_amplicon_results(
         input_directories=input_directories,
         output_fasta=os.path.join(output_dir, "consensus.fasta"),
     )
+
+@run_in_tempdir
+def wf_test(
+    output_dir: FullPath,
+    **kwargs
+):
+    job_create_fake_asm(output_dir=output_dir, lab_id="test_sample")
