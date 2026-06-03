@@ -74,7 +74,6 @@ class Fasta:
             contigs_l90=self.l90(),
             contigs_Ns_per_kb=self.Ns_per_kb(),
             contigs_gc_content=self.gc_content(),
-            genome_size_estimate=None,
             genome_depth_estimate=None
         )
 
