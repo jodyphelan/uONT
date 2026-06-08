@@ -200,7 +200,6 @@ def run_in_tempdir(func):
                     else:
                         logging.debug(f"Argument {param.name} not found in args or kwargs, skipping path conversion")
 
-            logging.debug(f"Arguments for {func.__name__}: args={args}, kwargs={kwargs}")
             logging.debug(f"Running {func.__name__} in temporary directory: {tmpdir}")
             os.chdir(tmpdir)
 

@@ -306,6 +306,12 @@ def cli_uONT():
         help="If set, the dehumanisation step will be performed",
     )
     scrub_wf_parser.add_argument(
+        "--sequencing-kit",
+        type=str,
+        choices=["SQK-RBK114-96"],
+        help="The sequencing kit used for the run (required if using dorado for adapter removal)",
+    )
+    scrub_wf_parser.add_argument(
         "--adapter-removal-tool",
         type=str,
         default="dorado",
@@ -795,6 +801,7 @@ def cli_uONT():
                 tools=tools,
                 threads=args.threads,
                 dehumanise=args.dehumanise,
+                sequencing_kit=args.sequencing_kit
             )
 
         elif args.workflow_command == "assemble":

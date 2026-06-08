@@ -1122,7 +1122,7 @@ def job_concatenate_ont_data(
                 for bam in bam_files:
                     tmp_bam_list.write(f"{bam}\n".encode())
                 tmp_bam_list.flush()
-                cmd = f"samtools cat -f {tmp_bam_list.name} -o {output_bam}"
+                cmd = f"samtools cat -f -b {tmp_bam_list.name} -o {output_bam}"
                 run_cmd(cmd)
                 logging.info(f"Concatenated BAM files for sample {sample_id} into {output_bam}")
         if write_fastq:
