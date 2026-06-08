@@ -26,6 +26,7 @@ from .jobs import (
     job_fastq_filter_chopper,
     job_polish_dorado, 
     job_remove_adapters_porechop, 
+    job_remove_adapters_dorado,
     job_downsample_filtlong,
     job_polish_medaka,
     job_estimate_genome_size_lrge,
@@ -178,7 +179,7 @@ def process_remove_adapters(
     input_reads: FullPath,
     output_reads: FullPath,
     sequencing_kit: Optional[str] = None,
-    tool: Literal["porechop"] = "porechop",
+    tool: Literal["porechop", "dorado"] = "dorado",
     threads: int = 4,
 ) -> None:
     """Remove sequencing adapters from reads.
@@ -187,7 +188,7 @@ def process_remove_adapters(
         input_reads (FullPath): Path to input reads file.
         output_reads (FullPath): Path to output adapter-trimmed reads file.
         sequencing_kit (str, optional): Sequencing kit to use for dorado. Required if tool is "dorado".
-        tool (Literal["porechop"]): Adapter removal tool to use. Defaults to "porechop".
+        tool (Literal["porechop", "dorado"]): Adapter removal tool to use. Defaults to "dorado".
         threads (int): Number of threads to use. Defaults to 4.
     
     Raises:
@@ -199,10 +200,10 @@ def process_remove_adapters(
         if filetype=="bam":
             raise ValueError("Porechop does not support BAM input. Please provide reads in FASTQ format or choose dorado for adapter removal.")
         job_remove_adapters_porechop(input_reads, output_reads, threads)
-    # elif tool == "dorado":
-    #     if sequencing_kit is None:
-    #         raise ValueError("Sequencing kit must be specified when using dorado for adapter removal.")
-    #     job_remove_adapters_dorado(input_reads, output_reads, sequencing_kit, threads)
+    elif tool == "dorado":
+        if sequencing_kit is None:
+            raise ValueError("Sequencing kit must be specified when using dorado for adapter removal.")
+        job_remove_adapters_dorado(input_reads, output_reads, sequencing_kit, threads)
     else:
         raise ValueError(f"Tool {tool} not supported for adapter removal.")
 

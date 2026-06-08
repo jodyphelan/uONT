@@ -1066,7 +1066,7 @@ def job_map_reads_bwa(
 
 
 @run_in_tempdir
-def job_concatenate_ont_bams(
+def job_concatenate_ont_data(
     input_dir: FullPath,
     output_dir: FullPath,
     id_csv_file: FullPath,
@@ -1122,7 +1122,7 @@ def job_concatenate_ont_bams(
                 for bam in bam_files:
                     tmp_bam_list.write(f"{bam}\n".encode())
                 tmp_bam_list.flush()
-                cmd = f"samtools merge -f -b {tmp_bam_list.name} {output_bam}"
+                cmd = f"samtools cat -f {tmp_bam_list.name} -o {output_bam}"
                 run_cmd(cmd)
                 logging.info(f"Concatenated BAM files for sample {sample_id} into {output_bam}")
         if write_fastq:
@@ -1183,36 +1183,36 @@ def job_create_fake_fastq(
     with gzip.open(fastq_file, "wb") as O:
         O.write(b"")
 
-# @run_in_tempdir
-# def job_remove_adapters_dorado(
-#     input_reads: FullPath,
-#     output_reads: FullPath,
-#     sequencing_kit: str,
-#     threads: int = 4,
-#     **kwargs
-# ) -> None:
-#     """Remove adapters from reads using dorado.
+@run_in_tempdir
+def job_remove_adapters_dorado(
+    input_reads: FullPath,
+    output_reads: FullPath,
+    sequencing_kit: str,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Remove adapters from reads using dorado.
     
-#     Args:
-#         input_fastq (FullPath): Path to input fastq file with reads.
-#         output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
-#         threads (int): Number of threads to use. Defaults to 4.
-#         kwargs (dict[str, object]): Additional options for interface symmetry.
+    Args:
+        input_fastq (FullPath): Path to input fastq file with reads.
+        output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
 
-#     Returns:
-#         None
-#     """
-#     filetype = get_filetype(input_reads)
-#     if filetype == "bam":
-#         tempfile = 'trimmed.bam'
-#         cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} > {tempfile}"
-#     elif filetype == "fastq.gz":
-#         tempfile = 'trimmed.fastq.gz'
-#         cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} --emit-fastq | pigz -p {threads} -c > {tempfile}"
+    Returns:
+        None
+    """
+    filetype = get_filetype(input_reads)
+    if filetype == "bam":
+        tempfile = 'trimmed.bam'
+        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} > {tempfile}"
+    elif filetype == "fastq.gz":
+        tempfile = 'trimmed.fastq.gz'
+        cmd = f"dorado trim --sequencing-kit {sequencing_kit} --threads {threads} {input_reads} --emit-fastq | pigz -p {threads} -c > {tempfile}"
 
-#     run_cmd(cmd)
+    run_cmd(cmd)
 
-#     shutil.move(tempfile, output_reads)
+    shutil.move(tempfile, output_reads)
 
 
 @run_in_tempdir

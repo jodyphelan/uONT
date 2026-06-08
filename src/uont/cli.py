@@ -308,8 +308,8 @@ def cli_uONT():
     scrub_wf_parser.add_argument(
         "--adapter-removal-tool",
         type=str,
-        default="porechop",
-        choices=["porechop"],
+        default="dorado",
+        choices=["porechop","dorado"],
         help="The tool to use for adapter removal in the scrubbing workflow",
     )
 
