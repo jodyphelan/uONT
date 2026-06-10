@@ -119,6 +119,7 @@ def wf_assemble(
     lab_id: str = None,
     link_id: str = None,
     link_directory: FullPath = None,
+    save_filtered_reads: bool = False,
     **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
@@ -217,26 +218,6 @@ def wf_assemble(
         threads=threads,
     )
 
-    # assembly_stats_file = f"assembly_stats.tsv"
-    # job_qc_python(
-    #     input_fasta=reoriented_assembly_file,
-    #     output_tsv=assembly_stats_file,
-    # )
-
-    # rmlst_result_file = None
-    # if rmlst:
-    #     rmlst_result_file = f"rmlst.tsv"
-    #     job_rmlst(
-    #         input_fasta=reoriented_assembly_file,
-    #         output_tsv=rmlst_result_file,
-    #     )
-
-    # process_collect_qc_results(
-    #     sample_name=lab_id if lab_id else "sample",
-    #     output_file=qc_results_file,
-    #     qc=assembly_stats_file,
-    #     rmlst=rmlst_result_file,
-    # )
     
     # 6. write report
     run_report_file = f"run_report.json"
@@ -247,10 +228,11 @@ def wf_assemble(
     )
 
     selected_outputs = {
-        filtered_fastq: f"{output_dir}/filtered_reads.fastq.gz",
         reoriented_assembly_file: f"{output_dir}/contigs.fasta",
         run_report_file: f"{output_dir}/run_report.json",
     }
+    if save_filtered_reads:
+        selected_outputs[filtered_fastq] = f"{output_dir}/filtered_reads.fastq.gz"
 
     if lab_id:
         selected_outputs[reoriented_assembly_file] = f"{output_dir}/{lab_id}.contigs.fasta"

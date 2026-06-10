@@ -457,6 +457,11 @@ def cli_uONT():
         type=file_path,
         help="Directory containing custom Dorado models",
     )
+    assemble_wf_parser.add_argument(
+        "--save-filtered-reads",
+        action="store_true",
+        help="If set, the filtered reads from the assembly workflow will be saved to the output directory",
+    )
 
 
     ########## END Workflow: assemble ##########
@@ -832,6 +837,7 @@ def cli_uONT():
                 batch_size=args.medaka_batch_size,
                 rmlst=args.rmlst,
                 models_directory=args.models_directory,
+                save_filtered_reads=args.save_filtered_reads
             )
             
         elif args.workflow_command == "amplicon":
