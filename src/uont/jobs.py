@@ -471,12 +471,6 @@ def job_polish_dorado(
 
     tmp_dir = kwargs.get("tmp_dir")
     os.makedirs(tmp_dir, exist_ok=True)
-    
-    cmd = f"dorado  aligner -t 4 {input_assembly} {input_bam} | samtools sort -@ 4 -o aligned.bam -"
-    run_cmd(cmd)
-
-    cmd = f"samtools index aligned.bam"
-    run_cmd(cmd)
 
     if models_path:
         logging.info(f"Using custom dorado models from {models_path}")
@@ -484,10 +478,15 @@ def job_polish_dorado(
     else:
         models_string = ""
 
-
     for round in range(1, rounds+1):
+        # align
+        cmd = f"dorado  aligner -t {threads} {input_assembly} {input_bam} | samtools sort -@ {threads} -o aligned_{round}.bam -"
+        run_cmd(cmd)
+        cmd = f"samtools index aligned_{round}.bam"
+        run_cmd(cmd)
+
         tmp_asm = f"round{round}_asm.fasta"
-        cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned.bam {input_assembly} {models_string} > {tmp_asm}"
+        cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned_{round}.bam {input_assembly} {models_string} > {tmp_asm}"
         run_cmd(cmd)
         input_assembly = tmp_asm  # Update input_assembly for the next round
 
@@ -1293,3 +1292,30 @@ def job_docx_report(
     tpl = DocxTemplate(template_docx)
     tpl.render(context)
     tpl.save(output_docx)
+
+@run_in_tempdir
+def job_nanoplot(
+    input_reads: FullPath,
+    output_dir: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    """Generate a NanoPlot report from a FASTQ file.
+    
+    Args:
+        input_reads (FullPath): Path to input FASTQ or BAM file with reads.
+        output_dir (FullPath): Path where NanoPlot report will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+    Returns:
+        None
+    """
+    logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
+    filetype = get_filetype(input_reads)
+    if filetype == "bam":
+        cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads}"
+    elif filetype == "fastq.gz":
+        cmd = f"NanoPlot --fastq {input_reads} -o {output_dir} -t {threads}"
+    else:
+        raise ValueError(f"Unsupported file type for NanoPlot: {filetype}. Only BAM and FASTQ files are supported.")
+    run_cmd(cmd)

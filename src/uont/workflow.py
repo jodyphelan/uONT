@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_write_report
+from .jobs import job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_write_report
 from .types import FullPath
 
 from .process import (
@@ -218,6 +218,11 @@ def wf_assemble(
         threads=threads,
     )
 
+    job_nanoplot(
+        input_fastq=input_reads,
+        output_dir="nanoplot_qc",
+        threads=threads,
+    )
     
     # 6. write report
     run_report_file = f"run_report.json"
@@ -230,7 +235,9 @@ def wf_assemble(
     selected_outputs = {
         reoriented_assembly_file: f"{output_dir}/contigs.fasta",
         run_report_file: f"{output_dir}/run_report.json",
+        "nanoplot_qc/NanoStats.txt": f"{output_dir}/NanoStats.txt",
     }
+    
     if save_filtered_reads:
         selected_outputs[filtered_fastq] = f"{output_dir}/filtered_reads.fastq.gz"
 
