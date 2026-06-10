@@ -219,7 +219,7 @@ def wf_assemble(
     )
 
     job_nanoplot(
-        input_fastq=input_reads,
+        input_reads=input_reads,
         output_dir="nanoplot_qc",
         threads=threads,
     )
@@ -237,7 +237,7 @@ def wf_assemble(
         run_report_file: f"{output_dir}/run_report.json",
         "nanoplot_qc/NanoStats.txt": f"{output_dir}/NanoStats.txt",
     }
-    
+
     if save_filtered_reads:
         selected_outputs[filtered_fastq] = f"{output_dir}/filtered_reads.fastq.gz"
 
