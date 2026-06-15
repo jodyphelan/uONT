@@ -180,8 +180,13 @@ def wf_assemble(
             logging.error(f"Estimated genome size {genome_size} is larger than expected for a bacterial genome. Please check your data and consider providing an estimated genome size to the workflow.")
             quit()
         elif genome_size < 1_000_000:
-            logging.error(f"Estimated genome size {genome_size} is smaller than expected for a bacterial genome. Please check your data and consider providing an estimated genome size to the workflow.")
-            quit()
+            logging.error(f"Estimated genome size {genome_size} is smaller than expected for a bacterial genome.")
+            if tools.genome_size_estimation!="autocycler":
+                logging.warning(f"Trying to re-estimate genome size with autocycler, which can be more accurate for small bacterial genomes.")
+                genome_size = process_estimate_genome_size(filtered_fastq, "autocycler", threads)
+                if genome_size < 1_000_000:
+                    logging.error(f"Estimated genome size {genome_size} is still smaller than expected for a bacterial genome after using autocycler. Please check your data and consider providing an estimated genome size to the workflow.")
+                    quit()
         else:
             logging.info(f"Estimated genome size: {genome_size} bp")
     
