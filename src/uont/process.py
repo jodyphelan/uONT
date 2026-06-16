@@ -20,6 +20,7 @@ from .utils import get_filetype, run_cmd, run_in_tempdir
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
+    job_assemble_raven,
     job_consensus_bcftools,
     job_consensus_medaka,
     job_estimate_genome_size_autocycler, 
@@ -299,7 +300,7 @@ def process_assemble(
     input_fastq: FullPath,
     output_fasta: str,
     threads: int = 4,
-    assembler: Literal["autocycler", "flye"] = "flye",
+    assembler: Literal["autocycler", "flye","raven"] = "flye",
     **kwargs
 ) -> None:
     """Assemble reads into contigs.
@@ -308,7 +309,7 @@ def process_assemble(
         input_fastq (FullPath): Path to input fastq file.
         output_fasta (str): Path to output assembly fasta file.
         threads (int): Number of threads to use. Defaults to 4.
-        assembler (Literal["autocycler", "flye"]): Assembler to use. Defaults to "flye".
+        assembler (Literal["autocycler", "flye","raven"]): Assembler to use. Defaults to "flye".
         **kwargs: Additional keyword arguments passed to the assembler.
     
     Raises:
@@ -318,6 +319,8 @@ def process_assemble(
         job_assemble_autocycler(input_fastq, output_fasta, kwargs.get("genome_size"), threads=threads, **kwargs)
     elif assembler == "flye":
         job_assemble_flye(input_fastq, output_fasta, threads, **kwargs)
+    elif assembler == "raven":
+        job_assemble_raven(input_fastq, output_fasta, threads, **kwargs)
     else:
         raise ValueError(f"Tool {assembler} not supported for assembly.")
     

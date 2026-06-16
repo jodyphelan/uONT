@@ -375,7 +375,7 @@ def cli_uONT():
         "--assembler-tool",
         type=str,
         default="autocycler",
-        choices=["autocycler","flye"],
+        choices=["autocycler","flye","raven"],
         help="The assembler to use for assembly",
     )
     assemble_wf_parser.add_argument(
@@ -461,6 +461,11 @@ def cli_uONT():
         "--save-filtered-reads",
         action="store_true",
         help="If set, the filtered reads from the assembly workflow will be saved to the output directory",
+    )
+    assemble_wf_parser.add_argument(
+        "--save-unpolished-contigs",
+        action="store_true",
+        help="If set, the unpolished assembly will be saved to the output directory in addition to the polished assembly",
     )
 
 
@@ -837,7 +842,8 @@ def cli_uONT():
                 batch_size=args.medaka_batch_size,
                 rmlst=args.rmlst,
                 models_directory=args.models_directory,
-                save_filtered_reads=args.save_filtered_reads
+                save_filtered_reads=args.save_filtered_reads,
+                save_unpolished_contigs=args.save_unpolished_contigs
             )
             
         elif args.workflow_command == "amplicon":

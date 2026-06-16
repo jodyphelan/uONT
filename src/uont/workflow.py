@@ -120,6 +120,7 @@ def wf_assemble(
     link_id: str = None,
     link_directory: FullPath = None,
     save_filtered_reads: bool = False,
+    save_unpolished_contigs: bool = False,
     **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
@@ -202,11 +203,19 @@ def wf_assemble(
         genome_size=genome_size
     )
     
-    # 4. Polish assembly
+    reoriented_assembly_file = f"raw_assembly_reoriented.fasta"
+    # 4. Reorient assembly
+    job_reorient_contigs_dnaapler(
+        input_fasta=raw_assembly_file,
+        output_fasta=reoriented_assembly_file,
+        threads=threads,
+    )
+
+    # 5. Polish assembly
     polished_assembly_file = f"polished_assembly.fasta"
     process_polish(
         input_reads=filtered_fastq,
-        input_assembly=raw_assembly_file,
+        input_assembly=reoriented_assembly_file,
         output_assembly=polished_assembly_file,
         threads=threads,        
         polishing_tool=tools.polishing,
@@ -215,13 +224,6 @@ def wf_assemble(
         medaka_batch_size=kwargs.get("batch_size", None),
     )
 
-    reoriented_assembly_file = f"polished_assembly_reoriented.fasta"
-    # 5. Reorient assembly
-    job_reorient_contigs_dnaapler(
-        input_fasta=polished_assembly_file,
-        output_fasta=reoriented_assembly_file,
-        threads=threads,
-    )
 
     job_nanoplot(
         input_reads=input_reads,
@@ -237,29 +239,35 @@ def wf_assemble(
         output_report=run_report_file,
     )
 
+        
+
     selected_outputs = {
-        reoriented_assembly_file: f"{output_dir}/contigs.fasta",
+        polished_assembly_file: f"{output_dir}/contigs.fasta",
         run_report_file: f"{output_dir}/run_report.json",
         "nanoplot_qc/NanoStats.txt": f"{output_dir}/NanoStats.txt",
     }
+    
+
+    if save_unpolished_contigs:
+        selected_outputs[reoriented_assembly_file] = f"{output_dir}/unpolished_contigs.fasta"
 
     if save_filtered_reads:
         selected_outputs[filtered_fastq] = f"{output_dir}/filtered_reads.fastq.gz"
 
     if lab_id:
-        selected_outputs[reoriented_assembly_file] = f"{output_dir}/{lab_id}.contigs.fasta"
+        selected_outputs[polished_assembly_file] = f"{output_dir}/{lab_id}.contigs.fasta"
     
     for src, dst in selected_outputs.items():
         logging.info(f"Copying {src} to {dst}")
         shutil.copy(src, dst)
 
-    if link_id:
-        if not os.path.exists(link_directory):
-            os.makedirs(link_directory)
-        logging.info(f"Creating symlink for final assembly at {link_directory}/{link_id}.contigs.fasta")
-        os.symlink(f"{reoriented_assembly_file}", f"{link_directory}/{link_id}.contigs.fasta")
+    # if link_id:
+    #     if not os.path.exists(link_directory):
+    #         os.makedirs(link_directory)
+    #     logging.info(f"Creating symlink for final assembly at {link_directory}/{link_id}.contigs.fasta")
+    #     os.symlink(f"{reoriented_assembly_file}", f"{link_directory}/{link_id}.contigs.fasta")
 
-    logging.info(f"Assembly workflow completed. Final assembly: {selected_outputs[reoriented_assembly_file]}")
+    logging.info(f"Assembly workflow completed. Final assembly: {selected_outputs[polished_assembly_file]}")
 
 def run_configured_workflow(config: Dict[str, Any]) -> None:
     """Execute a workflow described in a YAML/JSON configuration.

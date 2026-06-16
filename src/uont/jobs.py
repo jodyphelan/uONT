@@ -252,6 +252,35 @@ def job_reorient_contigs_dnaapler(
 
 @timeit
 @run_in_tempdir
+def job_assemble_raven(
+    input_fastq: FullPath,
+    output_fasta: FullPath,
+    threads: int = 4,
+    **kwargs
+) -> None:
+    """Assemble reads into contigs using raven.
+    
+    Args:
+        input_fastq (FullPath): Path to input fastq file with reads.
+        output_fasta (FullPath): Path to output assembly fasta file.
+        threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Optional Raven parameters such as ``genome_size``.
+
+    Returns:
+        None
+    """
+    
+    logging.info(f"Running raven assembly on {input_fastq} using {threads} threads.")
+    
+    cmd = f"raven --threads {threads} {input_fastq} > raven_assembly.fasta"
+    run_cmd(cmd)
+    
+    # move final assembly to output location
+    shutil.move("raven_assembly.fasta", output_fasta)
+
+
+@timeit
+@run_in_tempdir
 def job_assemble_autocycler(
     input_fastq: FullPath,
     output_fasta: FullPath,
