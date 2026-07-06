@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_write_report
+from .jobs import job_assemble_autocycler, job_assemble_raven, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
 from .types import FullPath
 
 from .process import (
@@ -193,21 +193,29 @@ def wf_assemble(
     
     # 3. Run assembly
     raw_assembly_file = f"raw_assembly.fasta"
-    process_assemble(
+    output_temp_asm_dir = f"intermediate_assembly_files"
+    job_assemble_autocycler(
         input_fastq=filtered_fastq,
         output_fasta=raw_assembly_file,
+        genome_size=genome_size,
         threads=threads,
-        assembler=tools.assembler,
         min_read_depth=min_read_depth,
         max_contigs=max_contigs,
-        genome_size=genome_size
+        output_temp_asm_dir=output_temp_asm_dir
     )
+    # job_assemble_raven(
+    #     input_fastq=filtered_fastq,
+    #     output_fasta=raw_assembly_file,
+    #     output_temp_asm_dir=output_temp_asm_dir,
+    #     threads=threads,
+    # )
     
     reoriented_assembly_file = f"raw_assembly_reoriented.fasta"
     # 4. Reorient assembly
     job_reorient_contigs_dnaapler(
         input_fasta=raw_assembly_file,
         output_fasta=reoriented_assembly_file,
+        output_stats=f"{reoriented_assembly_file}.dnaapler.tsv",
         threads=threads,
     )
 
@@ -236,7 +244,15 @@ def wf_assemble(
     job_write_report(
         input_reads=filtered_fastq,
         input_fasta=reoriented_assembly_file,
+        nano_stats_file="nanoplot_qc/NanoStats.txt",
+        dnaapler_file=f"{reoriented_assembly_file}.dnaapler.tsv",
         output_report=run_report_file,
+    )
+
+    split_contigs_dir = f"split_contigs"
+    job_split_fasta(
+        input_fasta=polished_assembly_file,
+        output_dir=split_contigs_dir,
     )
 
         
@@ -244,7 +260,8 @@ def wf_assemble(
     selected_outputs = {
         polished_assembly_file: f"{output_dir}/contigs.fasta",
         run_report_file: f"{output_dir}/run_report.json",
-        "nanoplot_qc/NanoStats.txt": f"{output_dir}/NanoStats.txt",
+        output_temp_asm_dir: f"{output_dir}/intermediate_assembly_files",
+        split_contigs_dir: f"{output_dir}/split_contigs",
     }
     
 
@@ -259,7 +276,10 @@ def wf_assemble(
     
     for src, dst in selected_outputs.items():
         logging.info(f"Copying {src} to {dst}")
-        shutil.copy(src, dst)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy(src, dst)
 
     # if link_id:
     #     if not os.path.exists(link_directory):
@@ -426,9 +446,3 @@ def wf_collate_amplicon_results(
         output_fasta=os.path.join(output_dir, "consensus.fasta"),
     )
 
-@run_in_tempdir
-def wf_test(
-    output_dir: FullPath,
-    **kwargs
-):
-    job_create_fake_asm(output_dir=output_dir, lab_id="test_sample")

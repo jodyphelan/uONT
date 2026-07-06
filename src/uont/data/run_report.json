@@ -1,0 +1,30 @@
+{
+    "uONT version": "0.12.2",
+    "input command": "/Users/b508086/miniforge3/envs/uont/bin/uONT wf assemble --input-reads /Users/b508086/test-data/fastq/180988.fastq.gz --output-dir out --debug",
+    "timestamp": "2026-07-06T12:00:18.351942",
+    "reads": {
+        "reads_n50": 6620,
+        "reads_total_number": 52856,
+        "reads_total_bases": 260037267,
+        "mean_quality": 22.6,
+        "median_quality": 26.4,
+        "above_Q10": "82005 (100.0%) 310.2Mb",
+        "above_Q15": "80062 (97.6%) 302.7Mb",
+        "above_Q20": "72875 (88.9%) 277.5Mb",
+        "above_Q25": "50432 (61.5%) 200.1Mb",
+        "above_Q30": "17760 (21.7%) 58.8Mb"
+    },
+    "contigs": {
+        "total_length": 2785854,
+        "total_number": 2,
+        "n50": 2765202,
+        "l90": 1,
+        "Ns_per_kb": 0.0,
+        "gc_content": 32.83
+    },
+    "genome_depth_estimate": 93.34202976896852,
+    "circularised_contigs": {
+        "1": 2765202,
+        "2": 20652
+    }
+}

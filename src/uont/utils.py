@@ -30,6 +30,7 @@ DEFAULT_CLI_DEPENDENCIES = [
     "rmlst",
     "samtools",
     "seqkit",
+    "NanoPlot",
 ]
 
 def get_software_version(tool: str) -> str:
@@ -51,6 +52,7 @@ def get_software_version(tool: str) -> str:
         "rmlst": "rmlst --version",
         "samtools": "samtools --version",
         "seqkit": "seqkit version",
+        "NanoPlot": "NanoPlot --version",
     }
     regex = {
         "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
@@ -70,6 +72,7 @@ def get_software_version(tool: str) -> str:
         "rmlst": r"rmlst\s+v?([0-9][0-9A-Za-z_.-]*)",
         "samtools": r"samtools\s+([0-9][0-9A-Za-z_.-]*)",
         "seqkit": r"seqkit\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "NanoPlot": r"NanoPlot\s+v?([0-9][0-9A-Za-z_.-]*)",
     }
 
     if tool not in cmds:
@@ -200,13 +203,22 @@ def run_in_tempdir(func):
                     else:
                         logging.debug(f"Argument {param.name} not found in args or kwargs, skipping path conversion")
 
-            logging.debug(f"Running {func.__name__} in temporary directory: {tmpdir}")
+            logging.debug(f"Arguments for {func.__name__}: args={args}, kwargs={kwargs}")
+            # logging.debug(f"Running {func.__name__} in temporary directory: {tmpdir}")
             os.chdir(tmpdir)
 
-            return func(*args, tmp_dir=tmpdir, **kwargs)
-        finally:
+            result = func(*args, tmp_dir=tmpdir, **kwargs)
+            
+            # Success - clean up temp directory
             os.chdir(cwd)
             shutil.rmtree(tmpdir, ignore_errors=True)
+            return result
+        except Exception:
+            # Error - preserve temp directory for debugging
+            os.chdir(cwd)
+            logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
+            # shutil.rmtree(tmpdir, ignore_errors=True)
+            raise
     return wrapper
 
 

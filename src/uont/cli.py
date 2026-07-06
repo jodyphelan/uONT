@@ -26,7 +26,7 @@ from .workflow import (
     wf_amplicon,
     run_configured_workflow,
     wf_scrub,
-    wf_test,
+
 )
 
 from uont import __version__ as uont_version
@@ -868,8 +868,6 @@ def cli_uONT():
                 input_directories=input_directories,
                 output_dir=args.output_dir,
             )
-        elif args.workflow_command == "test":
-            wf_test(output_dir=args.output_dir)
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)
         else:

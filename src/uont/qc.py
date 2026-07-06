@@ -64,18 +64,14 @@ class Fasta:
     
     def qc_metrics(self, min_contig_length: int = 0) -> QCMetrics:
 
-        metrics = QCMetrics(
-            reads_total_number=None,
-            reads_n50=None,
-            reads_total_bases=None,
-            contigs_total_length=len(self.all_sequence),
-            contigs_total_number=self.num_contigs(min_contig_length),
-            contigs_n50=self.n50(),
-            contigs_l90=self.l90(),
-            contigs_Ns_per_kb=self.Ns_per_kb(),
-            contigs_gc_content=self.gc_content(),
-            genome_depth_estimate=None
-        )
+        metrics = {
+            "total_length": len(self.all_sequence),
+            "total_number": self.num_contigs(min_contig_length),
+            "n50": self.n50(),
+            "l90": self.l90(),
+            "Ns_per_kb": self.Ns_per_kb(),
+            "gc_content": self.gc_content(),
+        }
 
         
         return metrics

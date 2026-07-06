@@ -26,7 +26,7 @@ import numpy as np
 from tqdm import tqdm
 import platform
 import subprocess as sp
-from typing import Tuple
+from typing import Optional, Tuple
 from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, update_dataclass
 from .types import FullPath, QCMetrics
 from .qc import Fasta
@@ -232,6 +232,7 @@ def job_assemble_flye(
 def job_reorient_contigs_dnaapler(
     input_fasta: FullPath,
     output_fasta: FullPath,
+    output_stats: FullPath,
     threads: int = 4,
     **kwargs
 ):
@@ -249,12 +250,16 @@ def job_reorient_contigs_dnaapler(
     cmd = f"dnaapler all --input {input_fasta} --output output.dnaapler --threads {threads}"
     run_cmd(cmd)
     shutil.move("output.dnaapler/dnaapler_reoriented.fasta", output_fasta)
+    logging.debug(f"Output stat is set to {output_stats}")
+    if output_stats:
+        shutil.move("output.dnaapler/dnaapler_all_reorientation_summary.tsv", output_stats)
 
 @timeit
 @run_in_tempdir
 def job_assemble_raven(
     input_fastq: FullPath,
     output_fasta: FullPath,
+    output_temp_asm_dir: FullPath,
     threads: int = 4,
     **kwargs
 ) -> None:
@@ -274,9 +279,17 @@ def job_assemble_raven(
     
     cmd = f"raven --threads {threads} {input_fastq} > raven_assembly.fasta"
     run_cmd(cmd)
+
+    # mkdir called autocycler_assemblies
+    if not os.path.exists("autocycler_assemblies"):
+        os.makedirs("autocycler_assemblies")
     
     # move final assembly to output location
     shutil.move("raven_assembly.fasta", output_fasta)
+
+    if output_temp_asm_dir:
+        shutil.move(f"autocycler_assemblies", output_temp_asm_dir)
+        logging.info(f"Temporary assembly files moved to {output_temp_asm_dir}")
 
 
 @timeit
@@ -285,8 +298,9 @@ def job_assemble_autocycler(
     input_fastq: FullPath,
     output_fasta: FullPath,
     genome_size: int,
+    output_temp_asm_dir: FullPath,
     threads: int = 4,
-    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven"),
+    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
     **kwargs
@@ -310,6 +324,7 @@ def job_assemble_autocycler(
         output_fasta (FullPath): Destination path for the consensus FASTA file.
         genome_size (int): Estimated genome size in base pairs.
         threads (int): Number of threads to use. Defaults to 4.
+        output_temp_asm_dir (Optional[FullPath]): Directory to store temporary assembly files. Defaults to None.
         assemblers (Tuple[str]): Assemblers to use (``miniasm``, ``flye``, ``raven``). Defaults to ``("flye", "miniasm")``.
         min_read_depth (int): Minimum read depth for subsampling. Defaults to 10.
         max_contigs (int): Maximum number of contigs allowed. Defaults to 80.
@@ -394,6 +409,10 @@ def job_assemble_autocycler(
     # Move final assembly to output location
     shutil.move(f"{autocycler_output_dir}/autocycler_out/consensus_assembly.fasta", output_fasta)
     logging.info(f"Autocycler assembly workflow completed. Final assembly written to {output_fasta}")
+
+    if output_temp_asm_dir:
+        shutil.move(f"{autocycler_output_dir}/autocycler_assemblies", output_temp_asm_dir)
+        logging.info(f"Temporary assembly files moved to {output_temp_asm_dir}")
 
 @timeit
 def job_estimate_genome_size_lrge(
@@ -736,15 +755,15 @@ def get_fastq_QC_metrics(
     min_read_length: int = 1000,
     **kwargs
 ) -> QCMetrics:
-    metrics = QCMetrics()
+    metrics = {}
     seqkit_stats_file = f"seqkit_stats.tsv"
     cmd = f"seqkit stats -Ta {input_fastq} > {seqkit_stats_file}"
     run_cmd(cmd)
     for row in csv.DictReader(open(seqkit_stats_file),delimiter="\t"):
         pass
-    metrics.reads_n50 = int(row["N50"])
-    metrics.reads_total_number = int(row["num_seqs"])
-    metrics.reads_total_bases = int(row["sum_len"])
+    metrics["reads_n50"] = int(row["N50"])
+    metrics["reads_total_number"] = int(row["num_seqs"])
+    metrics["reads_total_bases"] = int(row["sum_len"])
     return metrics
 
 @run_in_tempdir
@@ -770,38 +789,14 @@ def job_get_qc_metrics(
     contig_metrics = fasta.qc_metrics(min_contig_length)
     reads_metrics = get_fastq_QC_metrics(input_reads, min_read_length=min_contig_length)
 
-    metrics = update_dataclass(contig_metrics, reads_metrics)
+    metrics = {
+        'reads': reads_metrics,
+        'contigs': contig_metrics
+    }
 
-    metrics.genome_depth_estimate = metrics.reads_total_bases / metrics.contigs_total_length
+    metrics['genome_depth_estimate'] = metrics['reads']['reads_total_bases'] / metrics['contigs']['total_length']
 
     return metrics
-
-
-# def job_qc_python(
-#     input_fasta: FullPath,
-#     output_tsv: FullPath,
-#     sample_id: str = None,
-#     **kwargs
-# ) -> None:
-#     """Run QC on reads using a Python-based approach.
-    
-#     This is a placeholder for a custom QC implementation that could be developed
-#     in Python, potentially using libraries like Biopython or SeqIO to analyze
-#     read quality and length distributions, and output a QC report.
-
-#     Args:
-#         input_fasta (FullPath): Path to input fasta file with reads.
-#         output_tsv (FullPath): Path where QC report will be written.
-#         sample_id (str): Sample identifier. Defaults to None.
-#         kwargs (dict[str, object]): Additional options for interface symmetry.
-
-#     Returns:
-#         None
-#     """
-#     logging.info(f"Running custom Python QC on {input_fasta}. Output: {output_tsv}")
-#     fasta = Fasta(input_fasta, sample_id=sample_id)
-#     fasta.write_qc_report(output_file=output_tsv)
-
 
 
 def job_variant_calling_bcftools(
@@ -1249,42 +1244,89 @@ def job_remove_adapters_dorado(
 
     shutil.move(tempfile, output_reads)
 
+def extract_nanostats_metrics(
+    input_nano_stats: FullPath
+) -> dict:
+    """Extract relevant metrics from a NanoStats TSV output.
+    
+    Args:
+        input_nano_stats (FullPath): Path to input TSV file generated by NanoStats.
+    Returns:
+        dict: Dictionary containing extracted metrics such as total reads, mean read length, and N50.
+    """
+    metrics = {}
+    metrics_map = {
+        'mean_qual': 'mean_quality',
+        'median_qual': 'median_quality',
+        'Reads >Q10:': 'above_Q10',
+        'Reads >Q15:': 'above_Q15',
+        'Reads >Q20:': 'above_Q20',
+        'Reads >Q25:': 'above_Q25',
+        'Reads >Q30:': 'above_Q30',
+    }
+    for row in csv.DictReader(open(input_nano_stats), delimiter="\t"):
+
+        if row['Metrics'] in metrics_map:
+            try:
+                metrics[metrics_map[row['Metrics']]] = float(row['dataset'])
+            except:
+                metrics[metrics_map[row['Metrics']]] = str(row['dataset'])
+    return metrics
+
+def extract_dnaapler_metrics(
+    input_dnaapler: FullPath,
+    input_fasta: FullPath
+) -> dict:
+    """Extract relevant metrics from a DNAapler TSV output.
+    
+    Args:
+        input_dnaapler (FullPath): Path to input TSV file generated by DNAapler.
+        input_fasta (FullPath): Path to input FASTA file.
+    Returns:
+        dict: Dictionary containing circularised contig names and their lengths.
+    """
+    circular_contigs = []
+    for row in csv.DictReader(open(input_dnaapler), delimiter="\t"):
+        circular_contigs.append(row['Contig'].split()[0])
+
+    fasta = pysam.FastaFile(input_fasta)
+    results = {}
+    for contig in circular_contigs:
+        results[contig] = len(fasta.fetch(contig))
+    return results
+
 
 @run_in_tempdir
 def job_write_report(
     input_reads: FullPath,
     input_fasta: FullPath,
     output_report: FullPath,
+    nano_stats_file: FullPath = None,
+    dnaapler_file: FullPath = None,
     **kwargs
 ):
-    qc = job_get_qc_metrics(
-        input_reads=input_reads,
-        input_fasta=input_fasta,
-    )
     d = {
         "uONT version": g['uont_version'],
         "input command": g['input_command'],
         "timestamp": datetime.datetime.now().isoformat(),
 
     }
-    d.update(qc.__dict__)
+    qc = job_get_qc_metrics(
+        input_reads=input_reads,
+        input_fasta=input_fasta,
+    )
+    d.update(qc)
+
+    if nano_stats_file:
+        nano_metrics = extract_nanostats_metrics(nano_stats_file)
+        d['reads'].update(nano_metrics)
+
+    if dnaapler_file:
+        circular_contigs = extract_dnaapler_metrics(dnaapler_file, input_fasta)
+        d['circularised_contigs'] = circular_contigs
+
     with open(output_report, "w") as O:
         json.dump(d, O, indent=4)
-
-# def job_docx_report(
-#     input_reads: FullPath,
-#     input_assembly: FullPath,
-#     tempplace_docx: FullPath,
-#     output_docx: FullPath
-# ):
-#     """Generate a DOCX report from input data.
-    
-#     This is a placeholder function that demonstrates how to create a DOCX report using the python-docx library. The input data is expected to be a dictionary containing various pieces of information that should be included in the report. The function creates a simple DOCX file with some of the input data formatted as text.
-
-#     Args:
-#         input_reads (dict): Dictionary containing reads data to include in the report.
-#         input_assembly (dict): Dictionary containing assembly data to include in the report.
-#         output_docx (FullPath): Path where the generated DOCX report will be written.
 
 
 def job_docx_report(
@@ -1317,7 +1359,7 @@ def job_docx_report(
         for s in additional_data.split(","):
             key, value = s.split("=")
             context['d'][key] = value
-    print(context)
+
     tpl = DocxTemplate(template_docx)
     tpl.render(context)
     tpl.save(output_docx)
@@ -1342,9 +1384,100 @@ def job_nanoplot(
     logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
     filetype = get_filetype(input_reads)
     if filetype == "bam":
-        cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads}"
+        cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads} --tsv_stats"
     elif filetype == "fastq.gz":
-        cmd = f"NanoPlot --fastq {input_reads} -o {output_dir} -t {threads}"
+        cmd = f"NanoPlot --fastq {input_reads} -o {output_dir} -t {threads} --tsv_stats"
     else:
         raise ValueError(f"Unsupported file type for NanoPlot: {filetype}. Only BAM and FASTQ files are supported.")
     run_cmd(cmd)
+
+
+@run_in_tempdir
+def job_split_fasta(
+    input_fasta: FullPath,
+    output_dir: FullPath,
+
+    **kwargs
+):
+    """Split a FASTA file into multiple one file per contig in the specified output directory.
+
+    Args:
+        input_fasta (FullPath): Path to input FASTA file.
+        output_dir (FullPath): Path where split FASTA files will be written.
+        kwargs (dict[str, object]): Additional options for interface symmetry.
+    Returns:
+        None
+    """
+    logging.info(f"Splitting FASTA file {input_fasta} into individual contig files. Output directory: {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
+    fasta = pysam.FastaFile(input_fasta)
+    for contig in fasta.references:
+        contig_seq = fasta.fetch(contig)
+        contig_file = os.path.join(output_dir, f"{contig}_{len(contig_seq)}.fasta")
+        with open(contig_file, "w") as O:
+            O.write(f">{contig}\n{contig_seq}\n")
+
+
+
+
+@run_in_tempdir
+def job_test_wf(
+    input_reads: FullPath,
+    output_dir: FullPath,
+    threads: int = 4,
+    min_read_depth: int = 25,
+    max_contigs: int = 80,
+    min_read_length: int = 1000,
+    min_q_score: int = 12,
+    genome_size: int = None,
+    rmlst: bool = False,
+    lab_id: str = None,
+    link_id: str = None,
+    link_directory: FullPath = None,
+    save_filtered_reads: bool = False,
+    save_unpolished_contigs: bool = False,
+    **kwargs
+):
+    filtered_fastq = f"filtered.fastq.gz"
+    shutil.copy(input_reads, filtered_fastq)
+    os.mkdir("intermediate_assembly_files")
+    
+    polished_assembly_file = f"polished_assembly.fasta"
+    run_report_file = f"run_report.json"
+    output_temp_asm_dir = f"intermediate_assembly_files"
+    shutil.copy(os.path.join(os.path.dirname(__file__), "data", "contigs.fasta"), polished_assembly_file)
+    shutil.copy(os.path.join(os.path.dirname(__file__), "data", "run_report.json"), run_report_file)
+
+
+
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+
+    split_contigs_dir = f"split_contigs"
+    job_split_fasta(
+        input_fasta=polished_assembly_file,
+        output_dir=split_contigs_dir,
+    )
+
+        
+
+    selected_outputs = {
+        polished_assembly_file: f"{output_dir}/contigs.fasta",
+        run_report_file: f"{output_dir}/run_report.json",
+        output_temp_asm_dir: f"{output_dir}/intermediate_assembly_files",
+        split_contigs_dir: f"{output_dir}/split_contigs",
+    }
+    
+
+
+
+    if save_filtered_reads:
+        selected_outputs[filtered_fastq] = f"{output_dir}/filtered_reads.fastq.gz"
+
+    
+    for src, dst in selected_outputs.items():
+        logging.info(f"Copying {src} to {dst}")
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy(src, dst)
