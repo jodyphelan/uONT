@@ -30,6 +30,7 @@ from typing import Optional, Tuple
 from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, update_dataclass
 from .types import FullPath, QCMetrics
 from .qc import Fasta
+from joblib import Parallel, delayed
 
 
 
@@ -259,7 +260,6 @@ def job_reorient_contigs_dnaapler(
 def job_assemble_raven(
     input_fastq: FullPath,
     output_fasta: FullPath,
-    output_temp_asm_dir: FullPath,
     threads: int = 4,
     **kwargs
 ) -> None:
@@ -287,10 +287,138 @@ def job_assemble_raven(
     # move final assembly to output location
     shutil.move("raven_assembly.fasta", output_fasta)
 
-    if output_temp_asm_dir:
-        shutil.move(f"autocycler_assemblies", output_temp_asm_dir)
-        logging.info(f"Temporary assembly files moved to {output_temp_asm_dir}")
 
+
+def reheader_fasta(
+    input_fasta: FullPath,
+    input_gfa: FullPath,
+    output_fasta: FullPath,
+) -> None:
+    """
+    Reheader a FASTA file using the headers from a GFA file.
+
+    Args:
+        input_fasta (FullPath): Path to the input FASTA file.
+        input_gfa (FullPath): Path to the input GFA file.
+        output_fasta (FullPath): Path where the reheadered FASTA will be written.
+    
+    Returns:
+        None
+    """
+    for l in open(input_gfa):
+        if l.startswith("S"):
+            row = l.strip().split("\t")
+            depth = None
+            for field in row[3:]:
+                if field.startswith("DP:i:"):
+                    depth = int(field.split(":")[-1])
+            contig_name = row[1]
+            contig_seq = row[2]
+            with open(output_fasta, "a") as fasta_out:
+                fasta_out.write(f">{contig_name}\n{contig_seq}\n")
+
+
+def reheader_autocycler_asm(
+    input_fasta: FullPath,
+    input_gfa: FullPath,
+    output_fasta: FullPath,
+) -> None:
+    """
+    Reheader an autocycler assembly FASTA file using the headers from a GFA file.
+
+    Args:
+        input_fasta (FullPath): Path to the input FASTA file.
+        input_gfa (FullPath): Path to the input GFA file.
+        output_fasta (FullPath): Path where the reheadered FASTA will be written.
+    
+    Returns:
+        None
+    """
+    depth_lookup = {}
+    for l in open(input_gfa):
+        if l.startswith("S"):
+            row = l.strip().split("\t")
+            depth = None
+            for field in row[3:]:
+                if field.startswith("DP:i:"):
+                    depth = int(field.split(":")[-1])
+                    depth_lookup[row[1]] = depth
+
+    with open(output_fasta, "w") as fasta_out:
+        for l in open(input_fasta):
+            if l.startswith(">"):
+                row = l.strip().split()
+                contig_name = row[0]
+                contig_len = int(row[1].split("=")[-1])
+                if "circular=true" in l:
+                    circular = 'circular'
+                else:
+                    circular = 'linear'
+                depth = depth_lookup[contig_name[1:]]
+                fasta_out.write(f">{contig_name}_length={contig_len}_depth={depth}_{circular}\n")
+            else:
+                fasta_out.write(l)
+
+    
+@run_in_tempdir
+def job_get_contig_depths(
+    input_fasta: FullPath,
+    input_fastq: FullPath,
+    output_depths: FullPath,
+    threads: int = 4,
+    **kwargs
+):
+    """Calculate contig depths by mapping reads to assembly using minimap2 and samtools.
+    
+    Args:
+        input_fasta (FullPath): Path to input assembly fasta file.
+        input_fastq (FullPath): Path to input fastq reads file.
+        output_depths (FullPath): Path where contig depth information will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+    Returns:
+        None
+    """
+    logging.info(f"Calculating contig depths for {input_fasta} using reads from {input_fastq} with {threads} threads.")
+    
+    # Map reads to assembly
+    cmd = f"minimap2 -ax map-ont -t {threads} {input_fasta} {input_fastq} | samtools sort -@ {threads} -o mapped.bam -"
+    run_cmd(cmd)
+    
+    # Index the BAM file
+    cmd = f"samtools index mapped.bam"
+    run_cmd(cmd)
+    
+    fasta = pysam.FastaFile(input_fasta)
+    depths = {}
+    for seq in fasta.references:
+        contig_length = fasta.get_reference_length(seq)
+        depths[seq] = [0 for _ in range(contig_length)]
+    # Calculate depth
+    cmd = f"samtools depth -a mapped.bam > depth.txt"
+    run_cmd(cmd)
+
+    for l in open("depth.txt"):
+        row = l.strip().split("\t")
+        contig = row[0]
+        pos = int(row[1]) - 1  # Convert to 0-based index
+        depth = int(row[2])
+        depths[contig][pos] = depth
+
+    results = []
+    for contig, depth_list in depths.items():
+
+        mean = np.mean(depth_list)
+        median = np.median(depth_list)
+        results.append({
+            "contig": contig,
+            "mean_depth": round(mean, 2),
+            "median_depth": round(median, 2),
+            "length": len(depth_list)
+        })
+    
+    json.dump(results, open(output_depths, "w"), indent=4)
+        
+        
 
 @timeit
 @run_in_tempdir
@@ -364,17 +492,21 @@ def job_assemble_autocycler(
     
 
     combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
-    for sample_file, assembler in tqdm(combinations, desc="Assembling subsamples"):
+
+    def assemble_sample(sample_file, assembler, threads_per_job=1):
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
         logging.debug(f"Assembling sample {sample_num} with {assembler}")
         # monitor execution times
         start_time = time.time()
-        assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads} --genome_size {genome_size}"
+        assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads_per_job} --genome_size {genome_size}"
         run_cmd(assembly_cmd)
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"Execution time for subset assembly {sample_num} with {assembler}: {elapsed_time:.2f} seconds")
-    
+
+    # Use joblib to parallelize the assembly of samples
+    Parallel(n_jobs=threads)(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
+   
     # 4. Compress assemblies
     logging.info("Compressing assemblies")
     compress_cmd = f"autocycler compress -i {autocycler_output_dir}/autocycler_assemblies -a {autocycler_output_dir}/autocycler_out --threads {threads} --max_contigs {max_contigs}"
@@ -405,6 +537,7 @@ def job_assemble_autocycler(
     logging.info("Combining clusters into single assembly")
     combine_cmd = f"autocycler combine -a {autocycler_output_dir}/autocycler_out -i {autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*/5_final.gfa"
     run_cmd(combine_cmd)
+
 
     # Move final assembly to output location
     shutil.move(f"{autocycler_output_dir}/autocycler_out/consensus_assembly.fasta", output_fasta)
@@ -1275,25 +1408,20 @@ def extract_nanostats_metrics(
 
 def extract_dnaapler_metrics(
     input_dnaapler: FullPath,
-    input_fasta: FullPath
-) -> dict:
+) -> list:
     """Extract relevant metrics from a DNAapler TSV output.
     
     Args:
         input_dnaapler (FullPath): Path to input TSV file generated by DNAapler.
         input_fasta (FullPath): Path to input FASTA file.
     Returns:
-        dict: Dictionary containing circularised contig names and their lengths.
+        list: List containing circularised contig names.
     """
     circular_contigs = []
     for row in csv.DictReader(open(input_dnaapler), delimiter="\t"):
         circular_contigs.append(row['Contig'].split()[0])
 
-    fasta = pysam.FastaFile(input_fasta)
-    results = {}
-    for contig in circular_contigs:
-        results[contig] = len(fasta.fetch(contig))
-    return results
+    return circular_contigs
 
 
 @run_in_tempdir
@@ -1301,8 +1429,9 @@ def job_write_report(
     input_reads: FullPath,
     input_fasta: FullPath,
     output_report: FullPath,
-    nano_stats_file: FullPath = None,
-    dnaapler_file: FullPath = None,
+    nano_stats_file: FullPath,
+    dnaapler_file: FullPath,
+    depth_report_file: FullPath,
     **kwargs
 ):
     d = {
@@ -1317,16 +1446,25 @@ def job_write_report(
     )
     d.update(qc)
 
-    if nano_stats_file:
-        nano_metrics = extract_nanostats_metrics(nano_stats_file)
-        d['reads'].update(nano_metrics)
 
-    if dnaapler_file:
-        circular_contigs = extract_dnaapler_metrics(dnaapler_file, input_fasta)
-        d['circularised_contigs'] = circular_contigs
+    nano_metrics = extract_nanostats_metrics(nano_stats_file)
+    d['reads'].update(nano_metrics)
+
+
+    circular_contigs = extract_dnaapler_metrics(dnaapler_file)
+    d['contig_info'] = json.load(open(depth_report_file))
+    for item in d['contig_info']:
+        if item['contig'] in circular_contigs:
+            item['circular'] = True
+        else:
+            item['circular'] = False
+        
+
+    
 
     with open(output_report, "w") as O:
         json.dump(d, O, indent=4)
+
 
 
 def job_docx_report(
@@ -1395,6 +1533,7 @@ def job_nanoplot(
 @run_in_tempdir
 def job_split_fasta(
     input_fasta: FullPath,
+    run_report_json: FullPath,
     output_dir: FullPath,
 
     **kwargs
@@ -1403,6 +1542,7 @@ def job_split_fasta(
 
     Args:
         input_fasta (FullPath): Path to input FASTA file.
+        run_report_json (FullPath): Path to run report JSON file.
         output_dir (FullPath): Path where split FASTA files will be written.
         kwargs (dict[str, object]): Additional options for interface symmetry.
     Returns:
@@ -1411,11 +1551,15 @@ def job_split_fasta(
     logging.info(f"Splitting FASTA file {input_fasta} into individual contig files. Output directory: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
     fasta = pysam.FastaFile(input_fasta)
+    run_report = json.load(open(run_report_json))
+    contig_info = {item['contig']: item for item in run_report['contig_info']}
     for contig in fasta.references:
         contig_seq = fasta.fetch(contig)
         contig_file = os.path.join(output_dir, f"{contig}_{len(contig_seq)}.fasta")
         with open(contig_file, "w") as O:
-            O.write(f">{contig}\n{contig_seq}\n")
+            circular_or_linear = "circular" if contig_info[contig]['circular'] else "linear"
+            new_header = f"{contig}_length={len(contig_seq)}_depth={contig_info[contig]['median_depth']:.2f}_{circular_or_linear} circular={contig_info[contig]['circular']}"
+            O.write(f">{new_header}\n{contig_seq}\n")
 
 
 

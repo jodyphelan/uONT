@@ -45,6 +45,7 @@ requirements:
     - nextdenovo # [linux]
     - nextpolish # [linux]
     - dnaapler
+    - joblib
 
 test:
   imports:

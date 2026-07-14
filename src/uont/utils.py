@@ -31,6 +31,10 @@ DEFAULT_CLI_DEPENDENCIES = [
     "samtools",
     "seqkit",
     "NanoPlot",
+    "plassembler",
+    "myloasm",
+    "nextDenovo",
+    "nextPolish",
 ]
 
 def get_software_version(tool: str) -> str:
@@ -53,6 +57,10 @@ def get_software_version(tool: str) -> str:
         "samtools": "samtools --version",
         "seqkit": "seqkit version",
         "NanoPlot": "NanoPlot --version",
+        "plassembler": "plassembler --version",
+        "myloasm": "myloasm --version",
+        "nextDenovo": "nextDenovo --version",
+        "nextPolish": "nextPolish --version",
     }
     regex = {
         "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
@@ -73,6 +81,10 @@ def get_software_version(tool: str) -> str:
         "samtools": r"samtools\s+([0-9][0-9A-Za-z_.-]*)",
         "seqkit": r"seqkit\s+v?([0-9][0-9A-Za-z_.-]*)",
         "NanoPlot": r"NanoPlot\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "plassembler": r"plassembler\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "myloasm": r"myloasm\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "nextDenovo": r"nextDenovo\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "nextPolish": r"nextPolish\s+v?([0-9][0-9A-Za-z_.-]*)",
     }
 
     if tool not in cmds:
