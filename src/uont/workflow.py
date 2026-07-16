@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import job_assemble_autocycler, job_assemble_raven, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_get_contig_depths, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
+from .jobs import extract_nanostats_metrics, job_assemble_autocycler, job_assemble_raven, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_get_contig_depths, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
 from .types import FullPath
 
 from .process import (
@@ -104,6 +104,39 @@ def wf_scrub(
 
     logging.info(f"QC workflow completed. Filtered reads written to {output_reads}")
 
+def move_selected_outputs(selected_outputs: Dict[str, str]) -> None:
+    """
+    Move selected output files to their final destinations.
+    Args:
+        selected_outputs (Dict[str, str]): A dictionary mapping source file paths to destination file paths.
+    Returns:
+        None
+    """
+    for src, dst in selected_outputs.items():
+        logging.info(f"Copying {src} to {dst}")
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy(src, dst)
+
+def exit_on_assembly_failure(output_dir, pipeline_checkpoints) -> None:
+    """Handle assembly failure by writing reports and exiting gracefully."""
+    logging.info("Assembly failed. Writing reports and exiting gracefully.")
+    # Write a report indicating failure
+    run_report_file = f"run_report.json"
+    job_write_report(
+        output_report=run_report_file,
+        nano_stats_file="nanoplot_qc/NanoStats.txt",
+        pipeline_checkpoints=pipeline_checkpoints,
+    )
+
+    selected_outputs = {
+        run_report_file: f"{output_dir}/run_report.json",
+    }
+    move_selected_outputs(selected_outputs)
+    logging.info(f"Run report written to {run_report_file}")
+    quit()
+
 @run_in_tempdir
 def wf_assemble(
     input_reads: FullPath,
@@ -153,6 +186,11 @@ def wf_assemble(
     if tools.polishing == "dorado" and not kwargs.get("bam_for_dorado"):
         raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
     
+    pipeline_checkpoints = {
+        'low_read_count': None,
+        'assembly_failed': None,
+    }
+
     if get_filetype(input_reads) == "bam":
         input_fastq = f"input_reads.fastq.gz"
         job_bam_to_fastq(
@@ -163,6 +201,24 @@ def wf_assemble(
     else:
         input_fastq = input_reads
 
+    job_nanoplot(
+        input_reads=input_reads,
+        output_dir="nanoplot_qc",
+        threads=threads,
+    )
+
+    ns = extract_nanostats_metrics(
+        input_nano_stats="nanoplot_qc/NanoStats.txt",
+    )
+    num_reads = int(ns['above_Q10'].split()[0])
+
+
+    if num_reads < 10000:
+        pipeline_checkpoints['low_read_count'] = True
+        exit_on_assembly_failure(output_dir, pipeline_checkpoints)
+    else:
+        pipeline_checkpoints['low_read_count'] = False
+    
         
     # 1. Filter reads
     filtered_fastq = f"filtered.fastq.gz"
@@ -194,15 +250,21 @@ def wf_assemble(
     # 3. Run assembly
     raw_assembly_file = f"raw_assembly.fasta"
     output_temp_asm_dir = f"intermediate_assembly_files"
-    job_assemble_autocycler(
-        input_fastq=filtered_fastq,
-        output_fasta=raw_assembly_file,
-        genome_size=genome_size,
-        threads=threads,
-        min_read_depth=min_read_depth,
-        max_contigs=max_contigs,
-        output_temp_asm_dir=output_temp_asm_dir
-    )
+    try:
+        job_assemble_autocycler(
+            input_fastq=filtered_fastq,
+            output_fasta=raw_assembly_file,
+            genome_size=genome_size,
+            threads=threads,
+            min_read_depth=min_read_depth,
+            max_contigs=max_contigs,
+            output_temp_asm_dir=output_temp_asm_dir
+        )
+        pipeline_checkpoints['assembly_failed'] = False
+    except Exception as e:
+        pipeline_checkpoints['assembly_failed'] = True
+        exit_on_assembly_failure(output_dir, pipeline_checkpoints)
+    
     
     # job_assemble_raven(
     #     input_fastq=filtered_fastq,
@@ -235,11 +297,6 @@ def wf_assemble(
     )
 
 
-    job_nanoplot(
-        input_reads=input_reads,
-        output_dir="nanoplot_qc",
-        threads=threads,
-    )
 
     depth_report = "depth_report.json"
     job_get_contig_depths(
@@ -267,6 +324,7 @@ def wf_assemble(
         output_temp_asm_dir: f"{output_dir}/intermediate_assembly_files",
     }
     
+    move_selected_outputs(selected_outputs)
 
 
 
@@ -279,12 +337,7 @@ def wf_assemble(
     if lab_id:
         selected_outputs[polished_assembly_file] = f"{output_dir}/{lab_id}.contigs.fasta"
     
-    for src, dst in selected_outputs.items():
-        logging.info(f"Copying {src} to {dst}")
-        if os.path.isdir(src):
-            shutil.copytree(src, dst, dirs_exist_ok=True)
-        else:
-            shutil.copy(src, dst)
+
 
     # if link_id:
     #     if not os.path.exists(link_directory):

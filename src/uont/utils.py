@@ -8,6 +8,7 @@ import shutil
 import functools
 import inspect
 import time
+from typing import Optional
 from .types import FullPath
 from dataclasses import fields
 
@@ -201,7 +202,7 @@ def run_in_tempdir(func):
             for param in sig.parameters.values():
                 arg_type = param.annotation if param.annotation is not param.empty else str
 
-                if arg_type == FullPath:
+                if (arg_type == FullPath) or (arg_type == Optional[FullPath]):
                     arg_index = list(sig.parameters).index(param.name)
 
                     if arg_index < len(args):

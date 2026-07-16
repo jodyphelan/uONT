@@ -920,14 +920,12 @@ def job_get_qc_metrics(
     """
     fasta = Fasta(input_fasta)
     contig_metrics = fasta.qc_metrics(min_contig_length)
-    reads_metrics = get_fastq_QC_metrics(input_reads, min_read_length=min_contig_length)
 
     metrics = {
-        'reads': reads_metrics,
         'contigs': contig_metrics
     }
 
-    metrics['genome_depth_estimate'] = metrics['reads']['reads_total_bases'] / metrics['contigs']['total_length']
+    # metrics['genome_depth_estimate'] = metrics['reads']['reads_total_bases'] / metrics['contigs']['total_length']
 
     return metrics
 
@@ -1389,6 +1387,9 @@ def extract_nanostats_metrics(
     """
     metrics = {}
     metrics_map = {
+        'number_of_reads': 'reads_total_number',
+        'number_of_bases': 'reads_total_bases',
+        'n50': 'reads_n50',
         'mean_qual': 'mean_quality',
         'median_qual': 'median_quality',
         'Reads >Q10:': 'above_Q10',
@@ -1401,7 +1402,10 @@ def extract_nanostats_metrics(
 
         if row['Metrics'] in metrics_map:
             try:
-                metrics[metrics_map[row['Metrics']]] = float(row['dataset'])
+                try:
+                    metrics[metrics_map[row['Metrics']]] = int(row['dataset'])
+                except:
+                    metrics[metrics_map[row['Metrics']]] = float(row['dataset'])
             except:
                 metrics[metrics_map[row['Metrics']]] = str(row['dataset'])
     return metrics
@@ -1426,12 +1430,13 @@ def extract_dnaapler_metrics(
 
 @run_in_tempdir
 def job_write_report(
-    input_reads: FullPath,
-    input_fasta: FullPath,
     output_report: FullPath,
-    nano_stats_file: FullPath,
-    dnaapler_file: FullPath,
-    depth_report_file: FullPath,
+    input_reads: Optional[FullPath] = None,
+    input_fasta: Optional[FullPath] = None,
+    nano_stats_file: Optional[FullPath] = None,
+    dnaapler_file: Optional[FullPath] = None,
+    depth_report_file: Optional[FullPath] = None,
+    pipeline_checkpoints: Optional[dict] = None,
     **kwargs
 ):
     d = {
@@ -1440,28 +1445,36 @@ def job_write_report(
         "timestamp": datetime.datetime.now().isoformat(),
 
     }
-    qc = job_get_qc_metrics(
-        input_reads=input_reads,
-        input_fasta=input_fasta,
-    )
-    d.update(qc)
+    if input_reads and input_fasta:
+        qc = job_get_qc_metrics(
+            input_reads=input_reads,
+            input_fasta=input_fasta,
+        )
+        d.update(qc)
 
+    if nano_stats_file:
+        nano_metrics = extract_nanostats_metrics(nano_stats_file)
+        if 'reads' not in d:
+            d['reads'] = {}
+        d['reads'].update(nano_metrics)
 
-    nano_metrics = extract_nanostats_metrics(nano_stats_file)
-    d['reads'].update(nano_metrics)
-
-
-    circular_contigs = extract_dnaapler_metrics(dnaapler_file)
-    d['contig_info'] = json.load(open(depth_report_file))
-    for item in d['contig_info']:
-        if item['contig'] in circular_contigs:
-            item['circular'] = True
-        else:
-            item['circular'] = False
-        
-
+    if dnaapler_file:
+        if not depth_report_file:
+            raise ValueError("depth_report_file must be provided if dnaapler_file is provided")
+        circular_contigs = extract_dnaapler_metrics(dnaapler_file)
+        d['contig_info'] = json.load(open(depth_report_file))
+        for item in d['contig_info']:
+            if item['contig'] in circular_contigs:
+                item['circular'] = True
+            else:
+                item['circular'] = False
     
-
+    if 'reads' in d and 'contigs' in d:
+        d['genome_depth_estimate'] = d['reads']['reads_total_bases'] / d['contigs']['total_length']
+    
+    if pipeline_checkpoints:
+        d['pipeline_checkpoints'] = pipeline_checkpoints
+        
     with open(output_report, "w") as O:
         json.dump(d, O, indent=4)
 
