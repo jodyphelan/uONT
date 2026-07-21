@@ -9,7 +9,7 @@ for the CLI interface, allowing users to run specific steps directly from the
 command line if desired.
 """
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 import csv
 import datetime
 from glob import glob
@@ -289,76 +289,43 @@ def job_assemble_raven(
 
 
 
-def reheader_fasta(
+def job_reheader_fasta(
     input_fasta: FullPath,
-    input_gfa: FullPath,
+    run_report: FullPath,
     output_fasta: FullPath,
+    sample_name: str,
 ) -> None:
     """
     Reheader a FASTA file using the headers from a GFA file.
 
     Args:
         input_fasta (FullPath): Path to the input FASTA file.
-        input_gfa (FullPath): Path to the input GFA file.
+        run_report (FullPath): Path to the run report JSON file.
         output_fasta (FullPath): Path where the reheadered FASTA will be written.
+        sample_name (str): Sample name to include in the header.
     
     Returns:
         None
     """
-    for l in open(input_gfa):
-        if l.startswith("S"):
-            row = l.strip().split("\t")
-            depth = None
-            for field in row[3:]:
-                if field.startswith("DP:i:"):
-                    depth = int(field.split(":")[-1])
-            contig_name = row[1]
-            contig_seq = row[2]
-            with open(output_fasta, "a") as fasta_out:
-                fasta_out.write(f">{contig_name}\n{contig_seq}\n")
+    contig_info = {row['contig']: row for row in json.load(open(run_report))['contig_info']}
 
-
-def reheader_autocycler_asm(
-    input_fasta: FullPath,
-    input_gfa: FullPath,
-    output_fasta: FullPath,
-) -> None:
-    """
-    Reheader an autocycler assembly FASTA file using the headers from a GFA file.
-
-    Args:
-        input_fasta (FullPath): Path to the input FASTA file.
-        input_gfa (FullPath): Path to the input GFA file.
-        output_fasta (FullPath): Path where the reheadered FASTA will be written.
-    
-    Returns:
-        None
-    """
-    depth_lookup = {}
-    for l in open(input_gfa):
-        if l.startswith("S"):
-            row = l.strip().split("\t")
-            depth = None
-            for field in row[3:]:
-                if field.startswith("DP:i:"):
-                    depth = int(field.split(":")[-1])
-                    depth_lookup[row[1]] = depth
 
     with open(output_fasta, "w") as fasta_out:
         for l in open(input_fasta):
             if l.startswith(">"):
-                row = l.strip().split()
-                contig_name = row[0]
-                contig_len = int(row[1].split("=")[-1])
-                if "circular=true" in l:
-                    circular = 'circular'
+                contig_name = l.strip().split()[0][1:]  # Remove '>' and get contig name
+                if contig_name in contig_info:
+                    info = contig_info[contig_name]
+                    circular_or_linear = 'c' if info.get('circular', False) else 'l'
+                    new_header = f">{sample_name}_c{contig_name}_{info['length']}bp_{circular_or_linear} circular={info.get('circular', False)}\n"
+                    fasta_out.write(new_header)
                 else:
-                    circular = 'linear'
-                depth = depth_lookup[contig_name[1:]]
-                fasta_out.write(f">{contig_name}_length={contig_len}_depth={depth}_{circular}\n")
+                    logging.warning(f"Contig {contig_name} not found in run report. Keeping original header.")
+                    fasta_out.write(l)
             else:
                 fasta_out.write(l)
 
+    
     
 @run_in_tempdir
 def job_get_contig_depths(
@@ -1542,13 +1509,38 @@ def job_nanoplot(
         raise ValueError(f"Unsupported file type for NanoPlot: {filetype}. Only BAM and FASTQ files are supported.")
     run_cmd(cmd)
 
+def get_fasta_dict(
+    input_fasta: FullPath
+) -> dict:
+    """Read a FASTA file and return a dictionary mapping contig names to sequences.
+    
+    Args:
+        input_fasta (FullPath): Path to input FASTA file.
+    Returns:
+        dict: Dictionary where keys are contig names and values are sequences.
+    """
+    fa_dict = OrderedDict()
+    seq_name = ""
+
+    for l in open(input_fasta):
+        line = l.rstrip()
+        if line=="": continue
+        if line.startswith(">"):
+            seq_name = line[1:].split()[0]
+            fa_dict[seq_name] = []
+        else:
+            fa_dict[seq_name].append(line)
+    result = {}
+
+    for seq in fa_dict:
+        result[seq] = "".join(fa_dict[seq])
+        result[seq] = result[seq].upper()
+    return result
 
 @run_in_tempdir
 def job_split_fasta(
     input_fasta: FullPath,
-    run_report_json: FullPath,
     output_dir: FullPath,
-
     **kwargs
 ):
     """Split a FASTA file into multiple one file per contig in the specified output directory.
@@ -1563,18 +1555,14 @@ def job_split_fasta(
     """
     logging.info(f"Splitting FASTA file {input_fasta} into individual contig files. Output directory: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
-    fasta = pysam.FastaFile(input_fasta)
-    run_report = json.load(open(run_report_json))
-    contig_info = {item['contig']: item for item in run_report['contig_info']}
-    for contig in fasta.references:
-        contig_seq = fasta.fetch(contig)
-        contig_file = os.path.join(output_dir, f"{contig}_{len(contig_seq)}.fasta")
+    seq_dict = get_fasta_dict(input_fasta)
+    
+
+    for contig_name,seq in seq_dict.items():
+        
+        contig_file = os.path.join(output_dir, f"{contig_name}.fasta")
         with open(contig_file, "w") as O:
-            circular_or_linear = "circular" if contig_info[contig]['circular'] else "linear"
-            new_header = f"{contig}_length={len(contig_seq)}_depth={contig_info[contig]['median_depth']:.2f}_{circular_or_linear} circular={contig_info[contig]['circular']}"
-            O.write(f">{new_header}\n{contig_seq}\n")
-
-
+            O.write(f">{contig_name}\n{seq}\n")
 
 
 @run_in_tempdir
