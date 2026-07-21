@@ -142,15 +142,7 @@ def initialise_tools(
             setattr(tools, key.replace("_tool", ""), value)
     return tools
 
-def list_reference_sequences() -> list:
-    try:
-        from uont_data import list_reference_sequences
-        return list_reference_sequences()
-    except:
-        logging.warning("Could not import list_reference_sequences from uont_data. Returning empty list.")
-        return []
-    
-reference_sequences = list_reference_sequences()
+
 
 
 def configure_logging(debug: bool = False, log_file: str | None = None) -> None:
@@ -381,7 +373,7 @@ def cli_uONT():
     assemble_wf_parser.add_argument(
         "--polishing-tool",
         type=str,
-        default="medaka",
+        default="dorado",
         choices=["medaka","dorado"],
         help="The tool to use for polishing the assembly",
     )
@@ -471,104 +463,8 @@ def cli_uONT():
 
     ########## END Workflow: assemble ##########
 
-    consensus_wf_parser = workflow_subparsers.add_parser(
-        "consensus",
-        help="Generate a consensus sequence from an assembly and the raw reads",
-        parents=[parent_parser],
-        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
-    )
-    consensus_input_group = consensus_wf_parser.add_mutually_exclusive_group(required=True)
-    consensus_input_group.add_argument(
-        "--accession",
-        choices=list(reference_sequences),
-        type=str,
-        help="Reference accession to use as input assembly",
-    )
-    consensus_input_group.add_argument(
-        "--fasta",
-        type=str,
-        help="Input assembly fasta file",
-    )
-    consensus_wf_parser.add_argument(
-        "--input-reads",
-        type=str,
-        required=True,
-        help="Input fastq file containing the raw reads",
-    )
-    consensus_wf_parser.add_argument(
-        "--output-dir",
-        type=str,
-        required=True,
-        help="Output directory for consensus results",
-    )
-    consensus_wf_parser.add_argument(
-        "--consensus-tool",
-        type=str,
-        default="bcftools",
-        choices=["medaka","bcftools"],
-        help="The tool to use for generating the consensus sequence",
-    )
-    consensus_wf_parser.add_argument(
-        "--threads",
-        type=int,
-        default=4,
-        help="The number of threads to use for consensus generation",
-    )
-    consensus_wf_parser.add_argument(
-        "--min-read-depth",
-        type=int,
-        default=10,
-        help="Minimum read depth to call an allele (positions with less will be masked to N in the final consensus)",
-    )
+    
 
-    ##### end consensus workflow #####
-
-    ### Collate amplicon results ####
-
-    collate_amplicon_results_wf_parser = workflow_subparsers.add_parser(
-        "collate-amplicon-results",
-        help="Collate amplicon mapping stats from multiple workflow output directories",
-        parents=[parent_parser],
-        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
-    )
-    collate_input_group = collate_amplicon_results_wf_parser.add_mutually_exclusive_group(required=True)
-    collate_input_group.add_argument(
-        "--input-directories",
-        type=file_path,
-        nargs="+",
-        help="Input directories containing per-sample amplicon workflow outputs",
-    )
-    collate_input_group.add_argument(
-        "--input-directories-file",
-        type=file_path,
-        help="Path to a file containing one input directory per line",
-    )
-    collate_amplicon_results_wf_parser.add_argument(
-        "--output-dir",
-        type=file_path,
-        required=True,
-        help="Output directory for the collated amplicon mapping stats CSV",
-    )
-
-    test_wf_parser = workflow_subparsers.add_parser(
-        "test",
-        help="Run a test workflow to generate fake output files for testing the CLI",
-        parents=[parent_parser],
-        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
-    )
-    test_wf_parser.add_argument(
-        "--output-dir",
-        type=file_path,
-        required=True,
-        help="Output directory for the test workflow results",
-    )
-
-    run_config_parser = workflow_subparsers.add_parser(
-        "run-config-workflow",
-        help="Execute a workflow described in a YAML configuration file",
-        parents=[parent_parser],
-        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
-    )
 
     ########### END Workflow subparsers ###########
 
@@ -846,28 +742,7 @@ def cli_uONT():
                 save_unpolished_contigs=args.save_unpolished_contigs
             )
             
-        elif args.workflow_command == "amplicon":
-            tools = initialise_tools(args)
-
-            reference_sequence = reference_sequences.get(args.accession) if args.accession else args.fasta
-            
-            wf_amplicon(
-                reference_sequence = reference_sequence,
-                input_reads=args.input_reads,
-                output_dir = args.output_dir,
-                tools = tools,
-                threads = args.threads,
-                min_read_depth = args.min_read_depth,
-            )
-        elif args.workflow_command == "collate-amplicon-results":
-            input_directories = args.input_directories
-            if args.input_directories_file:
-                input_directories = load_path_list_file(args.input_directories_file)
-
-            wf_collate_amplicon_results(
-                input_directories=input_directories,
-                output_dir=args.output_dir,
-            )
+        
         elif args.workflow_command == "run-config-workflow":
             run_configured_workflow(config_data)
         else:
