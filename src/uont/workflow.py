@@ -144,6 +144,7 @@ def wf_assemble(
     tools: SimpleNamespace,
     threads: int = 4,
     threads_per_assembly: int = 1,
+    parallel_assembly_jobs: int = 1,
     min_read_depth: int = 25,
     max_contigs: int = 80,
     min_read_length: int = 1000,
@@ -258,6 +259,7 @@ def wf_assemble(
             genome_size=genome_size,
             threads=threads,
             threads_per_assembly=threads_per_assembly,
+            parallel_assembly_jobs=parallel_assembly_jobs,
             min_read_depth=min_read_depth,
             max_contigs=max_contigs,
             output_temp_asm_dir=output_temp_asm_dir

@@ -390,6 +390,12 @@ def cli_uONT():
         help="The number of threads to use per assembly job (used in autocycler assembly)",
     )
     assemble_wf_parser.add_argument(
+            "--parallel-assembly-jobs",
+            type=int,
+            default=4,
+            help="The number of parallel assembly jobs to run (used in autocycler assembly)",
+        )
+    assemble_wf_parser.add_argument(
         "--min-read-depth",
         type=int,
         default=25,
@@ -733,6 +739,7 @@ def cli_uONT():
                 tools=tools,
                 threads=args.threads,
                 threads_per_assembly=args.threads_per_assembly,
+                parallel_assembly_jobs=args.parallel_assembly_jobs,
                 min_read_depth=args.min_read_depth,
                 max_contigs=args.max_contigs,
                 min_read_length=args.min_read_length,

@@ -396,6 +396,7 @@ def job_assemble_autocycler(
     output_temp_asm_dir: FullPath,
     threads: int = 4,
     threads_per_assembly: int = 1,
+    parallel_assembly_jobs: int = 4,
     assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
@@ -473,7 +474,7 @@ def job_assemble_autocycler(
         logging.info(f"Execution time for subset assembly {sample_num} with {assembler}: {elapsed_time:.2f} seconds")
 
     # Use joblib to parallelize the assembly of samples
-    Parallel(n_jobs=threads)(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
+    Parallel(n_jobs=parallel_assembly_jobs)(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
    
     # 4. Compress assemblies
     logging.info("Compressing assemblies")
