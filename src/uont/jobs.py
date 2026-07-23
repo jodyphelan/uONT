@@ -395,6 +395,7 @@ def job_assemble_autocycler(
     genome_size: int,
     output_temp_asm_dir: FullPath,
     threads: int = 4,
+    threads_per_assembly: int = 1,
     assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
@@ -460,7 +461,7 @@ def job_assemble_autocycler(
 
     combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
 
-    def assemble_sample(sample_file, assembler, threads_per_job=1):
+    def assemble_sample(sample_file, assembler, threads_per_job=threads_per_assembly):
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
         logging.debug(f"Assembling sample {sample_num} with {assembler}")
         # monitor execution times
