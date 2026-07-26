@@ -229,8 +229,8 @@ def run_in_tempdir(func):
         except Exception:
             # Error - preserve temp directory for debugging
             os.chdir(cwd)
-            logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
-            # shutil.rmtree(tmpdir, ignore_errors=True)
+            # logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
+            shutil.rmtree(tmpdir, ignore_errors=True)
             raise
     return wrapper
 

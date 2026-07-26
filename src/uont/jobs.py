@@ -474,7 +474,8 @@ def job_assemble_autocycler(
         logging.info(f"Execution time for subset assembly {sample_num} with {assembler}: {elapsed_time:.2f} seconds")
 
     # Use joblib to parallelize the assembly of samples
-    Parallel(n_jobs=parallel_assembly_jobs)(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
+    logging.info(f"Running assemblies in parallel with {parallel_assembly_jobs} jobs in parallel, each with {threads_per_assembly} threads")
+    Parallel(n_jobs=parallel_assembly_jobs, backend="threading")(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
    
     # 4. Compress assemblies
     logging.info("Compressing assemblies")
