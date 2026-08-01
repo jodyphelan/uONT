@@ -268,7 +268,7 @@ def run_in_tempdir(func):
         except Exception:
             # Error - preserve temp directory for debugging
             os.chdir(cwd)
-            if uont.DEBUG:
+            if uont.PRESERVE_TEMP_DIRS:
                 logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
             else:
                 shutil.rmtree(tmpdir, ignore_errors=True)

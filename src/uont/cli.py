@@ -190,6 +190,11 @@ def cli_uONT():
         help="Enable debug logging",
     )
     parent_parser.add_argument(
+        "--preserve-temp-dirs",
+        action="store_true",
+        help="Preserve temporary directories for debugging",
+    )
+    parent_parser.add_argument(
         "--log-file",
         type=file_path,
         help="Optional path to a log file. If provided, logs are written to both console and file.",
@@ -699,8 +704,8 @@ def cli_uONT():
     g['input_command'] = " ".join(sys.argv)
 
     configure_logging(debug=args.debug, log_file=args.log_file)
-    if args.debug:
-        uont.DEBUG = True
+    if args.preserve_temp_dirs:
+        uont.PRESERVE_TEMP_DIRS = True
 
     config_data = load_yaml_config(args.config) if args.config else None
 

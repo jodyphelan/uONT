@@ -69,4 +69,4 @@ __all__ = [
     "run_configured_workflow",
 ]
 
-DEBUG = False
+PRESERVE_TEMP_DIRS = False
