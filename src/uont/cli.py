@@ -439,6 +439,12 @@ def cli_uONT():
         help="Minimum average read quality score for filtering (used in fastq filtering step)",
     )
     assemble_wf_parser.add_argument(
+        "--bam-for-dorado",
+        action="store_true",
+        # subpress help
+        help = argparse.SUPPRESS,
+    )
+    assemble_wf_parser.add_argument(
         "--organism",
         type=str,
         choices=get_genome_sizes().keys(),
