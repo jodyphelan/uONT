@@ -1,6 +1,8 @@
 import logging
+from enum import Enum
 import subprocess as sp
 import re
+import signal
 from shutil import which
 import os
 import tempfile
@@ -11,7 +13,7 @@ import time
 from typing import Optional
 from .types import FullPath
 from dataclasses import fields
-
+import uont
 
 DEFAULT_CLI_DEPENDENCIES = [
     "autocycler",
@@ -140,7 +142,13 @@ def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str]
 
     return available, missing
 
-def run_cmd(cmd: str, desc=None, log: str=None, exit_on_error: bool=True) -> sp.CompletedProcess:
+def run_cmd(
+    cmd: str,
+    desc=None,
+    log: Optional[str] = None,
+    exit_on_error: bool=True,
+    timeout: Optional[float] = None,
+) -> sp.CompletedProcess:
     if desc:
         logging.info(desc)
     processed_cmd = cmd.replace("&&","XX")
@@ -149,13 +157,43 @@ def run_cmd(cmd: str, desc=None, log: str=None, exit_on_error: bool=True) -> sp.
     if len(missing)>0:
         raise ValueError("Cant find programs: %s\n" % (", ".join(missing)))
     logging.debug(f"Running command: {cmd}")
-    cmd = "/bin/bash -c set -o pipefail; " + cmd
-    output = open(log,"w") if log else sp.PIPE
-    result = sp.run(cmd,shell=True,stderr=output,stdout=output)
-    if result.returncode != 0:
-        logging.error(result.stderr.decode("utf-8"))
+    log_handle = open(log,"w") if log else None
+    output = log_handle if log_handle else sp.PIPE
+    process = None
+    try:
+        process = sp.Popen(
+            ["/bin/bash", "-o", "pipefail", "-c", cmd],
+            stdout=output,
+            stderr=output,
+            start_new_session=True,
+        )
+        stdout, stderr = process.communicate(timeout=timeout)
+        result = sp.CompletedProcess(process.args, process.returncode, stdout, stderr)
+    except sp.TimeoutExpired as exc:
+        if process is not None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except sp.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                stdout, stderr = process.communicate()
+        else:
+            stdout = exc.stdout
+            stderr = exc.stderr
+        timeout_message = f"Command timed out after {timeout} seconds:\n{cmd}"
+        logging.error(timeout_message)
         if exit_on_error:
-            raise ValueError("Command Failed:\n%s\nstderr:\n%s" % (cmd,result.stderr.decode()))
+            raise TimeoutError(timeout_message) from exc
+        result = sp.CompletedProcess(cmd, 124, stdout, stderr)
+    finally:
+        if log_handle is not None:
+            log_handle.close()
+    if result.returncode != 0:
+        stderr_text = result.stderr.decode("utf-8", errors="ignore") if isinstance(result.stderr, bytes) else ""
+        if stderr_text:
+            logging.error(stderr_text)
+        if exit_on_error:
+            raise ValueError("Command Failed:\n%s\nstderr:\n%s" % (cmd, stderr_text))
     return result
 
 def timeit(func):
@@ -229,8 +267,10 @@ def run_in_tempdir(func):
         except Exception:
             # Error - preserve temp directory for debugging
             os.chdir(cwd)
-            # logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
-            shutil.rmtree(tmpdir, ignore_errors=True)
+            if uont.DEBUG:
+                logging.error(f"Error in {func.__name__}, preserving temp directory: {tmpdir}")
+            else:
+                shutil.rmtree(tmpdir, ignore_errors=True)
             raise
     return wrapper
 
@@ -260,3 +300,29 @@ def update_dataclass(target, source):
             setattr(target, field.name, getattr(source, field.name))
 
     return target
+
+
+class JobStatus(Enum):
+    NOT_RUN = "Not run"
+    SUCCESS = "Success"
+    FAILED = "Failed"
+
+    def __str__(self):
+        return self.value
+
+
+
+def return_job_status(func):
+    """
+    Decorator to return the job status of a function.
+    If the function runs successfully, it returns JobStatus.SUCCESS.
+    If the function raises an exception, it returns JobStatus.FAILED.
+    """
+    def wrapper(*args, **kwargs) -> JobStatus:
+        try:
+            func(*args, **kwargs)
+            return JobStatus.SUCCESS
+        except Exception as e:
+            logging.error(f"Job {func.__name__} failed with error: {e}")
+            return JobStatus.FAILED
+    return wrapper

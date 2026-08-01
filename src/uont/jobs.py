@@ -27,7 +27,7 @@ from tqdm import tqdm
 import platform
 import subprocess as sp
 from typing import Optional, Tuple
-from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, update_dataclass
+from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, return_job_status, JobStatus
 from .types import FullPath, QCMetrics
 from .qc import Fasta
 from joblib import Parallel, delayed
@@ -35,55 +35,7 @@ from joblib import Parallel, delayed
 
 
 
-
-# def run_in_tempdir(func):
-#     @functools.wraps(func)
-#     def wrapper(*args, **kwargs):
-#         cwd = os.getcwd()
-#         tmpdir = tempfile.mkdtemp()
-#         try:
-#             # filter out any arguments in kwargs that are already in args to avoid duplication
-#             # move kwargs to args based on function signature
-#             sig = inspect.signature(func)
-#             # find positional arguments in kwargs and move them to args
-
-#             if len(args)==0:
-#                 new_args = {}
-#                 new_kwargs = {}
-#                 for param in sig.parameters.values():
-#                     if param.name=='kwargs':
-#                         continue
-#                     if param.default is inspect.Parameter.empty:
-#                         new_args[param.name] = kwargs.pop(param.name)
-#                     else:
-#                         new_kwargs[param.name] = kwargs.get(param.name, param.default)
-#                 args = tuple(new_args.values())
-#                 kwargs = new_kwargs
-#             else:
-#                 new_args = args
-#                 new_kwargs = kwargs
-            
-#             kwargs = {k: v for k, v in kwargs.items() if k not in func.__code__.co_varnames}
-#             # convert any FullPath arguments to absolute paths
-#             sig = inspect.signature(func)
-#             for param in sig.parameters.values():
-#                 arg_type = param.annotation if param.annotation is not param.empty else str
-#                 if arg_type == FullPath:
-#                     arg_index = list(sig.parameters).index(param.name)
-#                     if arg_index < len(args):
-#                         args = list(args)
-#                         args[arg_index] = os.path.abspath(args[arg_index])
-#                         args = tuple(args)
-#                     elif param.name in kwargs:
-#                         kwargs[param.name] = os.path.abspath(kwargs[param.name])
-
-#             os.chdir(tmpdir)
-#             return func(*args, tmp_dir=tmpdir, **kwargs)
-#         finally:
-#             os.chdir(cwd)
-#             shutil.rmtree(tmpdir, ignore_errors=True)
-#     return wrapper
-
+@return_job_status
 @timeit
 def job_fastq_filter_chopper(
     input_fastq: FullPath,
@@ -150,6 +102,9 @@ def job_assemble_miniasm(
     # Copy the output assembly to the final destination if needed (e.g., if miniasm writes to a temp file)
     shutil.copy("miniasm_assembly.fasta", output_assembly)
 
+@return_job_status
+@timeit
+@run_in_tempdir
 def job_ont_pre_assembly_qc(
     input_fastq: FullPath,
     output_fastq: FullPath,
@@ -159,7 +114,8 @@ def job_ont_pre_assembly_qc(
     headcrop: int = 80,
     tailcrop: int = 80,
     keeppercent: int = 90,
-) -> None:
+    **kwargs
+) -> JobStatus:
     """Basic filtering of nanopore reads using chopper and filtlong.
     
     Args:
@@ -168,9 +124,13 @@ def job_ont_pre_assembly_qc(
         threads (int): Number of threads to use. Defaults to 4.
         quality (int): Minimum quality threshold. Defaults to 10.
         minreadlen (int): Minimum read length in base pairs. Defaults to 1000.
+        headcrop (int): Number of bases to crop from the start of each read. Defaults to 80.
+        tailcrop (int): Number of bases to crop from the end of each read. Defaults to 80.
+        keeppercent (int): Percentage of reads to keep based on quality. Defaults to 90.
+        **kwargs: Additional keyword arguments.
 
     Returns:
-        None
+        JobStatus: Status of the pre-assembly QC job, including success or failure and any relevant messages.
     """
     logging.info(f"Running basic filtering on {input_fastq} with output {output_fastq} using {threads} threads.")
     # chopper
@@ -179,6 +139,7 @@ def job_ont_pre_assembly_qc(
     # filtlong
     cmd = f"filtlong --min_length {minreadlen} --keep_percent {keeppercent} intermediate.fastq | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
+    return JobStatus.SUCCESS
 
 @timeit
 def job_remove_adapters_porechop(
@@ -229,6 +190,7 @@ def job_assemble_flye(
     # move final assembly to output location
     shutil.move(f"assembly/assembly.fasta", output_fasta)
 
+@return_job_status
 @run_in_tempdir
 def job_reorient_contigs_dnaapler(
     input_fasta: FullPath,
@@ -236,7 +198,7 @@ def job_reorient_contigs_dnaapler(
     output_stats: FullPath,
     threads: int = 4,
     **kwargs
-):
+) -> JobStatus:
     """Reorient contigs to start at dnaA using dnaapler.
     
     Args:
@@ -245,7 +207,7 @@ def job_reorient_contigs_dnaapler(
         threads (int): Number of threads to use. Defaults to 4.
 
     Returns:
-        None
+        JobStatus: Status of the reorient contigs job, including success or failure and any relevant messages.
     """
     logging.info(f"Running dnaapler to reorient contigs in {input_fasta} using {threads} threads.")
     cmd = f"dnaapler all --input {input_fasta} --output output.dnaapler --threads {threads}"
@@ -254,6 +216,7 @@ def job_reorient_contigs_dnaapler(
     logging.debug(f"Output stat is set to {output_stats}")
     if output_stats:
         shutil.move("output.dnaapler/dnaapler_all_reorientation_summary.tsv", output_stats)
+    return JobStatus.SUCCESS
 
 @timeit
 @run_in_tempdir
@@ -326,7 +289,7 @@ def job_reheader_fasta(
                 fasta_out.write(l)
 
     
-    
+@return_job_status    
 @run_in_tempdir
 def job_get_contig_depths(
     input_fasta: FullPath,
@@ -334,7 +297,7 @@ def job_get_contig_depths(
     output_depths: FullPath,
     threads: int = 4,
     **kwargs
-):
+) -> JobStatus:
     """Calculate contig depths by mapping reads to assembly using minimap2 and samtools.
     
     Args:
@@ -343,7 +306,7 @@ def job_get_contig_depths(
         output_depths (FullPath): Path where contig depth information will be written.
         threads (int): Number of threads to use. Defaults to 4.
     Returns:
-        None
+        JobStatus: Status of the contig depth calculation job, including success or failure and any relevant messages.
     """
     logging.info(f"Calculating contig depths for {input_fasta} using reads from {input_fastq} with {threads} threads.")
     
@@ -384,9 +347,10 @@ def job_get_contig_depths(
         })
     
     json.dump(results, open(output_depths, "w"), indent=4)
-        
+    return JobStatus.SUCCESS
         
 
+@return_job_status
 @timeit
 @run_in_tempdir
 def job_assemble_autocycler(
@@ -397,9 +361,11 @@ def job_assemble_autocycler(
     threads: int = 4,
     threads_per_assembly: int = 1,
     parallel_assembly_jobs: int = 4,
+    assembly_timeout_seconds: Optional[float] = None,
     assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
+    max_samples: int = 4,
     **kwargs
 ) -> None:
     """Run complete autocycler assembly workflow.
@@ -422,6 +388,7 @@ def job_assemble_autocycler(
         genome_size (int): Estimated genome size in base pairs.
         threads (int): Number of threads to use. Defaults to 4.
         output_temp_asm_dir (Optional[FullPath]): Directory to store temporary assembly files. Defaults to None.
+        assembly_timeout_seconds (Optional[float]): Per-assembly timeout in seconds. Defaults to None.
         assemblers (Tuple[str]): Assemblers to use (``miniasm``, ``flye``, ``raven``). Defaults to ``("flye", "miniasm")``.
         min_read_depth (int): Minimum read depth for subsampling. Defaults to 10.
         max_contigs (int): Maximum number of contigs allowed. Defaults to 80.
@@ -458,7 +425,7 @@ def job_assemble_autocycler(
     # Get list of sample files
     import glob
     sample_files = sorted(glob.glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
-    
+    sample_files = sample_files[:max_samples]
 
     combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
 
@@ -468,15 +435,31 @@ def job_assemble_autocycler(
         # monitor execution times
         start_time = time.time()
         assembly_cmd = f"autocycler helper {assembler} --reads {sample_file} --out_prefix {autocycler_output_dir}/autocycler_assemblies/{assembler}_{sample_num} --threads {threads_per_job} --genome_size {genome_size}"
-        run_cmd(assembly_cmd)
+        try:
+            run_cmd(assembly_cmd, timeout=assembly_timeout_seconds)
+        except TimeoutError as exc:
+            logging.warning(
+                f"Assembly timed out for sample {sample_num} with {assembler} after {assembly_timeout_seconds} seconds"
+            )
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"Execution time for subset assembly {sample_num} with {assembler}: {elapsed_time:.2f} seconds")
 
     # Use joblib to parallelize the assembly of samples
-    logging.info(f"Running assemblies in parallel with {parallel_assembly_jobs} jobs in parallel, each with {threads_per_assembly} threads")
+    logging.info(
+        f"Running assemblies in parallel with {parallel_assembly_jobs} jobs in parallel, each with {threads_per_assembly} threads"
+        + (f" and a per-job timeout of {assembly_timeout_seconds} seconds" if assembly_timeout_seconds else "")
+    )
     Parallel(n_jobs=parallel_assembly_jobs, backend="threading")(delayed(assemble_sample)(sample_file, assembler) for sample_file, assembler in combinations)
-   
+
+    # 3.5 remove any empty assembly files
+    logging.info("Removing empty assembly files")
+    assembly_files = glob.glob(f"{autocycler_output_dir}/autocycler_assemblies/*_*.fasta")
+    for assembly_file in assembly_files:
+        if os.path.getsize(assembly_file) == 0:
+            logging.warning(f"Removing empty assembly file: {assembly_file}")
+            os.remove(assembly_file)
+            
     # 4. Compress assemblies
     logging.info("Compressing assemblies")
     compress_cmd = f"autocycler compress -i {autocycler_output_dir}/autocycler_assemblies -a {autocycler_output_dir}/autocycler_out --threads {threads} --max_contigs {max_contigs}"
@@ -593,6 +576,7 @@ def job_downsample_filtlong(
     cmd = f"filtlong --target_bases {target_bases} --mean_q_weight 10 {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
+@return_job_status
 @timeit
 @run_in_tempdir
 def job_polish_dorado(
@@ -603,7 +587,7 @@ def job_polish_dorado(
     models_path: str = None,
     rounds: int = 2,
     **kwargs
-) -> None:
+) -> JobStatus:
     """Polish an assembly using dorado.
     
     Args:
@@ -614,12 +598,10 @@ def job_polish_dorado(
         kwargs (dict[str, object]): Additional options including ``tmp_dir``.
 
     Returns:
-        None
+        JobStatus: Status of the polishing job.
     """
     logging.info(f"Running dorado polishing on {input_assembly}")
     
-    input_bam = kwargs.get("bam_for_dorado", input_bam)
-
     tmp_dir = kwargs.get("tmp_dir")
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -643,9 +625,11 @@ def job_polish_dorado(
 
     shutil.move(tmp_asm, output_assembly)
     logging.info(f"Dorado polishing completed. Output: {output_assembly}")
+    return JobStatus.SUCCESS
 
 
 
+@return_job_status
 @timeit
 @run_in_tempdir
 def job_polish_medaka(
@@ -655,7 +639,7 @@ def job_polish_medaka(
     threads: int = 4,
     medaka_batch_size: int = 100,
     **kwargs
-) -> None:
+) -> JobStatus:
     """Polish an assembly twice using medaka consensus.
     
     Performs two rounds of medaka polishing with bacterial model to improve
@@ -670,7 +654,7 @@ def job_polish_medaka(
         kwargs (dict[str, object]): Additional options including ``tmp_dir``.
 
     Returns:
-        None
+        JobStatus: Status of the polishing job.
     """
     
     logging.info(f"Running medaka polishing (round 1) for {input_assembly}")
@@ -704,6 +688,8 @@ def job_polish_medaka(
 
     shutil.move(f"{tmp_dir2}/consensus.fasta", output_assembly)
     logging.info(f"Medaka polishing completed. Output: {output_assembly}")
+    return JobStatus.SUCCESS
+
 
 @run_in_tempdir
 def job_map_reads_minimap2(
@@ -1398,6 +1384,7 @@ def extract_dnaapler_metrics(
     return circular_contigs
 
 
+
 @run_in_tempdir
 def job_write_report(
     output_report: FullPath,
@@ -1443,10 +1430,11 @@ def job_write_report(
         d['genome_depth_estimate'] = d['reads']['reads_total_bases'] / d['contigs']['total_length']
     
     if pipeline_checkpoints:
-        d['pipeline_checkpoints'] = pipeline_checkpoints
+        d['pipeline_checkpoints'] = {k: str(v) for k, v in pipeline_checkpoints.items()}
         
     with open(output_report, "w") as O:
         json.dump(d, O, indent=4)
+    
 
 
 
@@ -1485,13 +1473,14 @@ def job_docx_report(
     tpl.render(context)
     tpl.save(output_docx)
 
+@return_job_status
 @run_in_tempdir
 def job_nanoplot(
     input_reads: FullPath,
     output_dir: FullPath,
     threads: int = 4,
     **kwargs
-):
+) -> JobStatus:
     """Generate a NanoPlot report from a FASTQ file.
     
     Args:
@@ -1500,7 +1489,7 @@ def job_nanoplot(
         threads (int): Number of threads to use. Defaults to 4.
         kwargs (dict[str, object]): Additional options for interface symmetry.
     Returns:
-        None
+        JobStatus: Status of the NanoPlot job, including success or failure and any relevant messages.
     """
     logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
     filetype = get_filetype(input_reads)
@@ -1511,6 +1500,7 @@ def job_nanoplot(
     else:
         raise ValueError(f"Unsupported file type for NanoPlot: {filetype}. Only BAM and FASTQ files are supported.")
     run_cmd(cmd)
+    return JobStatus.SUCCESS
 
 def get_fasta_dict(
     input_fasta: FullPath

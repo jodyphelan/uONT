@@ -68,3 +68,5 @@ __all__ = [
     "make_dir_if_not_exists",
     "run_configured_workflow",
 ]
+
+DEBUG = False

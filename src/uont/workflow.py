@@ -4,6 +4,7 @@ Workflow functions for the uONT pipeline
 
 import os
 import logging
+from enum import Enum
 from importlib import import_module
 import shutil
 from types import SimpleNamespace
@@ -24,7 +25,7 @@ from .process import (
     process_remove_adapters,
 )
 
-from .utils import run_in_tempdir, get_filetype, g
+from .utils import run_in_tempdir, get_filetype, g, JobStatus
 
 
 def make_dir_if_not_exists(directory: str) -> None:
@@ -137,6 +138,8 @@ def exit_on_assembly_failure(output_dir, pipeline_checkpoints) -> None:
     logging.info(f"Run report written to {run_report_file}")
     quit()
 
+
+
 @run_in_tempdir
 def wf_assemble(
     input_reads: FullPath,
@@ -145,17 +148,16 @@ def wf_assemble(
     threads: int = 4,
     threads_per_assembly: int = 1,
     parallel_assembly_jobs: int = 1,
+    assembly_timeout_seconds: Optional[float] = None,
     min_read_depth: int = 25,
     max_contigs: int = 80,
     min_read_length: int = 1000,
     min_q_score: int = 12,
     genome_size: int = None,
-    rmlst: bool = False,
     lab_id: str = None,
-    link_id: str = None,
-    link_directory: FullPath = None,
     save_filtered_reads: bool = False,
     save_unpolished_contigs: bool = False,
+    max_samples: int = 4,
     **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
@@ -184,13 +186,24 @@ def wf_assemble(
     """
     logging.info(f"Starting assembly with input {input_reads} and output directory {output_dir}")
     make_dir_if_not_exists(f"{output_dir}/")
+
+    if get_filetype(input_reads) == "bam":
+        bam_file = input_reads
+    else:
+        bam_file = None
     
-    if tools.polishing == "dorado" and not kwargs.get("bam_for_dorado"):
+    if tools.polishing == "dorado" and bam_file is None:
         raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
     
     pipeline_checkpoints = {
-        'low_read_count': None,
-        'assembly_failed': None,
+        'nanoplot_qc': JobStatus.NOT_RUN,
+        'read_count_pass': JobStatus.NOT_RUN,
+        'read_filtering': JobStatus.NOT_RUN,
+        'genome_size_estimation': JobStatus.NOT_RUN,
+        'assembly': JobStatus.NOT_RUN,
+        'reorientation': JobStatus.NOT_RUN,
+        'polishing': JobStatus.NOT_RUN,
+        'depth_estimation': JobStatus.NOT_RUN
     }
 
     if get_filetype(input_reads) == "bam":
@@ -203,7 +216,7 @@ def wf_assemble(
     else:
         input_fastq = input_reads
 
-    job_nanoplot(
+    pipeline_checkpoints['nanoplot_qc'] = job_nanoplot(
         input_reads=input_reads,
         output_dir="nanoplot_qc",
         threads=threads,
@@ -216,15 +229,15 @@ def wf_assemble(
 
 
     if num_reads < 10000:
-        pipeline_checkpoints['low_read_count'] = True
+        pipeline_checkpoints['read_count_pass'] = JobStatus.FAILED
         exit_on_assembly_failure(output_dir, pipeline_checkpoints)
     else:
-        pipeline_checkpoints['low_read_count'] = False
+        pipeline_checkpoints['read_count_pass'] = JobStatus.SUCCESS
     
         
     # 1. Filter reads
     filtered_fastq = f"filtered.fastq.gz"
-    job_ont_pre_assembly_qc(
+    pipeline_checkpoints['read_filtering'] = job_ont_pre_assembly_qc(
         input_fastq=input_fastq,
         output_fastq=filtered_fastq,
         threads=threads,
@@ -237,17 +250,21 @@ def wf_assemble(
         genome_size = process_estimate_genome_size(filtered_fastq, tools.genome_size_estimation, threads)
         if genome_size > 15_000_000:
             logging.error(f"Estimated genome size {genome_size} is larger than expected for a bacterial genome. Please check your data and consider providing an estimated genome size to the workflow.")
-            quit()
+            pipeline_checkpoints['genome_size_estimation'] = JobStatus.FAILED
+            exit_on_assembly_failure(output_dir, pipeline_checkpoints)
         elif genome_size < 1_000_000:
             logging.error(f"Estimated genome size {genome_size} is smaller than expected for a bacterial genome.")
+            pipeline_checkpoints['genome_size_estimation'] = JobStatus.FAILED
             if tools.genome_size_estimation!="autocycler":
                 logging.warning(f"Trying to re-estimate genome size with autocycler, which can be more accurate for small bacterial genomes.")
                 genome_size = process_estimate_genome_size(filtered_fastq, "autocycler", threads)
                 if genome_size < 1_000_000:
                     logging.error(f"Estimated genome size {genome_size} is still smaller than expected for a bacterial genome after using autocycler. Please check your data and consider providing an estimated genome size to the workflow.")
-                    quit()
+                    pipeline_checkpoints['genome_size_estimation'] = JobStatus.FAILED
+                    exit_on_assembly_failure(output_dir, pipeline_checkpoints)
         else:
             logging.info(f"Estimated genome size: {genome_size} bp")
+            pipeline_checkpoints['genome_size_estimation'] = JobStatus.SUCCESS
     
     # 3. Run assembly
     raw_assembly_file = f"raw_assembly.fasta"
@@ -260,13 +277,15 @@ def wf_assemble(
             threads=threads,
             threads_per_assembly=threads_per_assembly,
             parallel_assembly_jobs=parallel_assembly_jobs,
+            assembly_timeout_seconds=assembly_timeout_seconds,
             min_read_depth=min_read_depth,
             max_contigs=max_contigs,
-            output_temp_asm_dir=output_temp_asm_dir
+            output_temp_asm_dir=output_temp_asm_dir,
+            max_samples=max_samples,
         )
-        pipeline_checkpoints['assembly_failed'] = False
+        pipeline_checkpoints['assembly'] = JobStatus.SUCCESS
     except Exception as e:
-        pipeline_checkpoints['assembly_failed'] = True
+        pipeline_checkpoints['assembly'] = JobStatus.FAILED
         exit_on_assembly_failure(output_dir, pipeline_checkpoints)
     
     
@@ -280,7 +299,7 @@ def wf_assemble(
     
     reoriented_assembly_file = f"raw_assembly_reoriented.fasta"
     # 4. Reorient assembly
-    job_reorient_contigs_dnaapler(
+    pipeline_checkpoints['reorientation'] = job_reorient_contigs_dnaapler(
         input_fasta=raw_assembly_file,
         output_fasta=reoriented_assembly_file,
         output_stats=f"{reoriented_assembly_file}.dnaapler.tsv",
@@ -289,13 +308,13 @@ def wf_assemble(
 
     # 5. Polish assembly
     polished_assembly_file = f"polished_assembly.fasta"
-    process_polish(
-        input_reads=filtered_fastq,
+    pipeline_checkpoints['polishing'] = process_polish(
+        input_reads=filtered_fastq if bam_file is None else bam_file,
         input_assembly=reoriented_assembly_file,
         output_assembly=polished_assembly_file,
         threads=threads,        
         polishing_tool=tools.polishing,
-        bam_for_dorado=kwargs.get("bam_for_dorado", None),
+        bam_for_dorado=bam_file,
         models_path=kwargs.get("models_directory", None),
         medaka_batch_size=kwargs.get("batch_size", None),
     )
@@ -303,7 +322,7 @@ def wf_assemble(
 
 
     depth_report = "depth_report.json"
-    job_get_contig_depths(
+    pipeline_checkpoints['depth_estimation'] = job_get_contig_depths(
         input_fasta=polished_assembly_file,
         input_fastq=filtered_fastq,
         output_depths=depth_report,
@@ -319,6 +338,7 @@ def wf_assemble(
         dnaapler_file=f"{reoriented_assembly_file}.dnaapler.tsv",
         depth_report_file=depth_report,
         output_report=run_report_file,
+        pipeline_checkpoints=pipeline_checkpoints
     )
 
 

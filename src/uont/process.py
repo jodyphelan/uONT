@@ -16,7 +16,7 @@ import pandas as pd
 from dataclasses import dataclass
 from tqdm import tqdm
 from typing import Literal, Optional
-from .utils import get_filetype, run_cmd, run_in_tempdir
+from .utils import JobStatus, get_filetype, return_job_status, run_cmd, run_in_tempdir
 from .jobs import (
     job_assemble_autocycler,
     job_assemble_flye,
@@ -325,23 +325,24 @@ def process_assemble(
         raise ValueError(f"Tool {assembler} not supported for assembly.")
     
 
+
 def process_polish(
-        input_reads: str,
-        input_assembly: str,
-        output_assembly: str,
+        input_reads: FullPath,
+        input_assembly: FullPath,
+        output_assembly: FullPath,
         polishing_tool: Literal["medaka","dorado"] = "medaka",
         threads: int = 4,
         **kwargs
-) -> None:
+) -> JobStatus:
     """Polish an assembly to improve accuracy.
     
     Uses the specified polishing tool to improve assembly quality by correcting
     errors using the original reads.
     
     Args:
-        input_reads (str): Path to input fastq reads file.
-        input_assembly (str): Path to input assembly fasta file to polish.
-        output_assembly (str): Path where polished assembly will be written.
+        input_reads (FullPath): Path to input fastq reads file.
+        input_assembly (FullPath): Path to input assembly fasta file to polish.
+        output_assembly (FullPath): Path where polished assembly will be written.
         polishing_tool (Literal["medaka","dorado"]): Tool to use for polishing. Defaults to "medaka".
         threads (int): Number of threads to use. Defaults to 4.
     
@@ -349,17 +350,17 @@ def process_polish(
         ValueError: If specified polishing tool is not supported.
     """
     if polishing_tool == "medaka":
-        job_polish_medaka(input_reads, input_assembly, output_assembly, threads, **kwargs)
+        return job_polish_medaka(input_reads, input_assembly, output_assembly, threads, **kwargs)
     elif polishing_tool == "dorado":
-        job_polish_dorado(input_reads, input_assembly, output_assembly, threads, **kwargs)
+        return job_polish_dorado(input_reads, input_assembly, output_assembly, threads, **kwargs)
     else:
         raise ValueError(f"Tool {polishing_tool} not supported for polishing.")
-
+    
 
 def process_consensus(
-        input_reads: str,
-        input_reference: str,
-        output_assembly: str,
+        input_reads: FullPath,
+        input_reference: FullPath,
+        output_assembly: FullPath,
         consensus_tool: Literal["medaka","bcftools"] = "medaka",
         threads: int = 4,
 ) -> None:
@@ -371,9 +372,9 @@ def process_consensus(
     include additional steps such as circularization or manual curation before polishing.
     
     Args:
-        input_reads (str): Path to input fastq reads file.
-        input_reference (str): Path to input assembly fasta file to generate consensus from.
-        output_assembly (str): Path where consensus assembly will be written.
+        input_reads (FullPath): Path to input fastq reads file.
+        input_reference (FullPath): Path to input assembly fasta file to generate consensus from.
+        output_assembly (FullPath): Path where consensus assembly will be written.
         consensus_tool (Literal["medaka","bcftools"]): Tool to use for polishing. Defaults to "medaka".
         threads (int): Number of threads to use. Defaults to 4.
     
@@ -388,9 +389,9 @@ def process_consensus(
         raise ValueError(f"Tool {consensus_tool} not supported for consensus generation.")
 
 def process_variant_calling(
-    reference_fasta: str,
-    input_bam: str,
-    output_vcf: str,
+    reference_fasta: FullPath,
+    input_bam: FullPath,
+    output_vcf: FullPath,
     variant_caller: Literal["bcftools"] = "bcftools",
 ) -> None:
     """Call variants from mapped reads.

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import get_args, get_origin, Literal
 import yaml
 from .types import FullPath
+from .utils import JobStatus
 from .utils import check_cli_dependencies, DEFAULT_CLI_DEPENDENCIES
 from .utils import g
 
@@ -28,6 +29,7 @@ from .workflow import (
     wf_scrub,
 
 )
+import uont
 
 from uont import __version__ as uont_version
 
@@ -396,6 +398,12 @@ def cli_uONT():
             help="The number of parallel assembly jobs to run (used in autocycler assembly)",
         )
     assemble_wf_parser.add_argument(
+        "--assembly-timeout-seconds",
+        type=float,
+        default=None,
+        help="Per-assembly timeout in seconds for each parallel autocycler helper job",
+    )
+    assemble_wf_parser.add_argument(
         "--min-read-depth",
         type=int,
         default=25,
@@ -406,6 +414,12 @@ def cli_uONT():
         type=int,
         default=80,
         help="Maximum number of contigs allowed (used in autocycler assembly)",
+    )
+    assemble_wf_parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=4,
+        help="Maximum number of samples to process in parallel (used in autocycler assembly)",
     )
     assemble_wf_parser.add_argument(
         "--min-read-length",
@@ -441,20 +455,10 @@ def cli_uONT():
         help="Directory to create symbolic links for the final assembly",
     )
     assemble_wf_parser.add_argument(
-        "--bam-for-dorado",
-        type=file_path,
-        help="BAM file to use for Dorado polishing",
-    )
-    assemble_wf_parser.add_argument(
         "--medaka-batch-size",
         type=int,
         default=100,
         help="Batch size for medaka polishing",
-    )
-    assemble_wf_parser.add_argument(
-        "--rmlst",
-        action="store_true",
-        help="Run optional rMLST species assignment on the final assembly",
     )
     assemble_wf_parser.add_argument(
         "--models-directory",
@@ -695,6 +699,8 @@ def cli_uONT():
     g['input_command'] = " ".join(sys.argv)
 
     configure_logging(debug=args.debug, log_file=args.log_file)
+    if args.debug:
+        uont.DEBUG = True
 
     config_data = load_yaml_config(args.config) if args.config else None
 
@@ -740,17 +746,17 @@ def cli_uONT():
                 threads=args.threads,
                 threads_per_assembly=args.threads_per_assembly,
                 parallel_assembly_jobs=args.parallel_assembly_jobs,
+                assembly_timeout_seconds=args.assembly_timeout_seconds,
                 min_read_depth=args.min_read_depth,
                 max_contigs=args.max_contigs,
+                max_samples = args.max_samples,
                 min_read_length=args.min_read_length,
                 min_q_score=args.min_q_score,
                 genome_size=genome_size,
                 lab_id=args.lab_id,
                 link_id=args.link_id,
                 link_directory=args.link_directory,
-                bam_for_dorado=args.bam_for_dorado,
                 batch_size=args.medaka_batch_size,
-                rmlst=args.rmlst,
                 models_directory=args.models_directory,
                 save_filtered_reads=args.save_filtered_reads,
                 save_unpolished_contigs=args.save_unpolished_contigs
