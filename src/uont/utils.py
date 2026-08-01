@@ -212,6 +212,7 @@ def run_in_tempdir(func):
     def wrapper(*args, **kwargs):
         cwd = os.getcwd()
         tmpdir = tempfile.mkdtemp()
+        logging.debug(f"Created temporary directory: {tmpdir}")
         try:
             # filter out any arguments in kwargs that are already in args to avoid duplication
             sig = inspect.signature(func)
