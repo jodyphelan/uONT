@@ -440,7 +440,7 @@ def cli_uONT():
     )
     assemble_wf_parser.add_argument(
         "--bam-for-dorado",
-        action="store_true",
+        type=str,
         # subpress help
         help = argparse.SUPPRESS,
     )
