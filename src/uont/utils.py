@@ -319,6 +319,7 @@ def return_job_status(func):
     If the function runs successfully, it returns JobStatus.SUCCESS.
     If the function raises an exception, it returns JobStatus.FAILED.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs) -> JobStatus:
         try:
             func(*args, **kwargs)

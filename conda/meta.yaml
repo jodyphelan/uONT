@@ -10,7 +10,7 @@ source:
   path: ..
 
 build:
-  number: 0
+  number: 1
   noarch: python
   script: python -m pip install . -vv --no-deps --no-build-isolation
 
@@ -41,11 +41,14 @@ requirements:
     - lrge
     - mafft
     - porechop_abi
-    - hostile
-    - nextdenovo # [linux]
-    - nextpolish # [linux]
+    - nextdenovo
+    - nextpolish
     - dnaapler
     - joblib
+    - numpy
+    - plassembler
+    - nanoplot
+    - myloasm
 
 test:
   imports:
