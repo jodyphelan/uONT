@@ -15,7 +15,7 @@ from typing import get_args, get_origin, Literal
 import yaml
 from .types import FullPath
 from .utils import JobStatus
-from .utils import check_cli_dependencies, DEFAULT_CLI_DEPENDENCIES
+from .utils import check_cli_dependencies, DEFAULT_CLI_DEPENDENCIES, get_dorado_model_dir, get_plassembler_db_dir
 from .utils import g
 
 from .process import (
@@ -177,6 +177,8 @@ def configure_logging(debug: bool = False, log_file: str | None = None) -> None:
         logging.info("Writing logs to file: %s", log_file)
 
 def cli_uONT():
+
+    print(get_plassembler_db_dir())
     """Main entry point for the uONT CLI."""
     parent_parser = argparse.ArgumentParser(
         add_help=False,
@@ -474,6 +476,7 @@ def cli_uONT():
     assemble_wf_parser.add_argument(
         "--models-directory",
         type=file_path,
+        default=get_dorado_model_dir(),
         help="Directory containing custom Dorado models",
     )
     assemble_wf_parser.add_argument(
@@ -824,8 +827,7 @@ def cli_uONT():
             process_parser.print_help()
     elif args.command in ("check-dependencies", "deps"):
         available, missing = check_cli_dependencies(args.tools)
-        if available:
-            logging.info("Available dependencies: %s", ", ".join(available))
+
         if missing:
             logging.error("Missing dependencies: %s", ", ".join(missing))
             sys.exit(1)

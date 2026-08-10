@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from pathlib import Path
 import subprocess as sp
 import re
 import signal
@@ -14,6 +15,7 @@ from typing import Optional
 from .types import FullPath
 from dataclasses import fields
 import uont
+import sys
 
 DEFAULT_CLI_DEPENDENCIES = [
     "autocycler",
@@ -127,19 +129,34 @@ def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str]
     available: list[str] = []
     missing: list[str] = []
 
+    logging.info("Checking CLI dependencies...")
     for program in unique_programs:
         if which(program) is None:
             missing.append(program)
-            print(f"🔴 {program}: not found")
+            sys.stdout.write(f"🔴 {program}: not found\n")
             continue
 
         available.append(program)
         try:
             version = get_software_version(program)
-            print(f"🟢 {program}: {version}")
+            sys.stdout.write(f"🟢 {program}: {version}\n")
         except Exception:
-            print(f"🟠 {program}: found, version unknown")
+            sys.stdout.write(f"🟠 {program}: found, version unknown\n")
 
+    dbs = {
+        'dorado models': get_dorado_model_dir(),
+        'plassembler db': get_plassembler_db_dir()
+    }
+    logging.info("Checking required databases...")
+    for db_name, db_path in dbs.items():
+        if db_path is None:
+            missing.append(db_name)
+            sys.stdout.write(f"🔴 {db_name}: not found\n")
+        else:
+            available.append(db_name)
+            sys.stdout.write(f"🟢 {db_name}: {db_path}\n")
+
+    
     return available, missing
 
 def run_cmd(
@@ -328,3 +345,33 @@ def return_job_status(func):
             logging.error(f"Job {func.__name__} failed with error: {e}")
             return JobStatus.FAILED
     return wrapper
+
+
+def get_dorado_model_dir() -> Optional[str]:
+    dorado_executable = which("dorado")
+    if dorado_executable is None:
+        raise ValueError("Dorado executable not found in PATH.")
+    # check if executable is a symlink and resolve it
+    dorado_executable = Path(dorado_executable)
+    if dorado_executable.is_symlink():
+        dorado_executable = dorado_executable.resolve()
+    dorado_executable_dir = Path(os.path.dirname(dorado_executable))
+    dorado_models_dir =  dorado_executable_dir.parent / "models"
+    if not dorado_models_dir.exists():
+        return None
+    return str(dorado_models_dir)
+
+
+def get_plassembler_db_dir() -> Optional[str]:
+    plassembler_executable = which("plassembler")
+    if plassembler_executable is None:
+        raise ValueError("Plassembler executable not found in PATH.")
+    # check if executable is a symlink and resolve it
+    plassembler_executable = Path(plassembler_executable)
+    if plassembler_executable.is_symlink():
+        plassembler_executable = plassembler_executable.resolve()
+    plassembler_executable_dir = Path(os.path.dirname(plassembler_executable))
+    plassembler_db_dir =  plassembler_executable_dir.parent / "plassembler_db"
+    if not plassembler_db_dir.exists():
+        return None
+    return str(plassembler_db_dir)
