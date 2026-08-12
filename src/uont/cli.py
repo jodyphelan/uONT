@@ -177,8 +177,6 @@ def configure_logging(debug: bool = False, log_file: str | None = None) -> None:
         logging.info("Writing logs to file: %s", log_file)
 
 def cli_uONT():
-
-    print(get_plassembler_db_dir())
     """Main entry point for the uONT CLI."""
     parent_parser = argparse.ArgumentParser(
         add_help=False,
