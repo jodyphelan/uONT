@@ -47,7 +47,7 @@ requirements:
     - joblib
     - numpy
     - plassembler
-    - nanoplot
+    - nanoplot =1.47.1
     - myloasm
 
 test:
