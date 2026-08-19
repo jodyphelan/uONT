@@ -348,7 +348,25 @@ def job_get_contig_depths(
     
     json.dump(results, open(output_depths, "w"), indent=4)
     return JobStatus.SUCCESS
-        
+
+def bam2fastq(
+    input_bam: FullPath,
+    output_fastq: FullPath,
+    threads: int = 4,
+) -> None:
+    """Convert BAM file to FASTQ format using samtools.
+    
+    Args:
+        input_bam (FullPath): Path to input BAM file.
+        output_fastq (FullPath): Path where output FASTQ file will be written.
+        threads (int): Number of threads to use. Defaults to 4.
+
+    Returns:
+        None
+    """
+    logging.info(f"Converting BAM {input_bam} to FASTQ {output_fastq} using {threads} threads.")
+    cmd = f"samtools fastq -@ {threads} {input_bam} | pigz -p {threads} -c > {output_fastq}"
+    run_cmd(cmd)
 
 @return_job_status
 @timeit
@@ -387,7 +405,8 @@ def job_assemble_autocycler(
         output_fasta (FullPath): Destination path for the consensus FASTA file.
         genome_size (int): Estimated genome size in base pairs.
         threads (int): Number of threads to use. Defaults to 4.
-        output_temp_asm_dir (Optional[FullPath]): Directory to store temporary assembly files. Defaults to None.
+        max_samples (int): Maximum number of subsampled read sets to generate. Defaults to 4.
+        output_temp_asm_dir (FullPath): Directory to store temporary assembly files.
         assembly_timeout_seconds (Optional[float]): Per-assembly timeout in seconds. Defaults to None.
         assemblers (Tuple[str]): Assemblers to use (``miniasm``, ``flye``, ``raven``). Defaults to ``("flye", "miniasm")``.
         min_read_depth (int): Minimum read depth for subsampling. Defaults to 10.
@@ -410,7 +429,7 @@ def job_assemble_autocycler(
     
     # 1. Subsample reads
     logging.info(f"Subsampling reads into subsets with minimum read depth {min_read_depth}X")
-    subsample_cmd = f"autocycler subsample --reads {input_fastq} --out_dir {autocycler_output_dir}/subsampled_reads --genome_size {genome_size} --min_read_depth {min_read_depth}"
+    subsample_cmd = f"autocycler subsample --reads {input_fastq} --out_dir {autocycler_output_dir}/subsampled_reads --genome_size {genome_size} --min_read_depth {min_read_depth} --count {max_samples}"
     run_cmd(subsample_cmd)
     
     # 2. QC on subsampled reads

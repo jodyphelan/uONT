@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
     
-from .jobs import extract_nanostats_metrics, job_assemble_autocycler, job_assemble_raven, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_get_contig_depths, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
+from .jobs import extract_nanostats_metrics, job_assemble_autocycler, bam2fastq, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_get_contig_depths, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
 from .types import FullPath
 
 from .process import (
@@ -48,6 +48,7 @@ def wf_scrub(
     threads: int = 4,
     dehumanise: bool = True,
     sequencing_kit: Optional[str] = None,
+    write_fastq: bool = True,
     **kwargs
 ) -> None:
     """Run a QC workflow on raw reads.
@@ -86,22 +87,13 @@ def wf_scrub(
         threads=threads,
     )
 
-    
-
-    # # 2. Dehumanise reads
-    # dehumanised_fastq = f"dehumanised.fastq.gz"
-    # if dehumanise:
-    #     job_dehumanise_hostile(
-    #         input_fastq=filtered_reads,
-    #         output_fastq=dehumanised_fastq,
-    #         threads=threads,
-    #     )
-    #     final_fastq = dehumanised_fastq
-    # else:
-    #     final_fastq = filtered_reads
-
-    # 3. Move selected outputs to final output directory
+    if input_filetype == "bam" and write_fastq:
+        fastq_output = f"{os.path.splitext(output_reads)[0]}.fastq.gz"
+        logging.info(f"Converting filtered BAM to FASTQ: {fastq_output}")
+        bam2fastq(input_bam=filtered_reads, output_fastq=fastq_output, threads=threads)
+        
     shutil.move(filtered_reads, output_reads)
+
 
     logging.info(f"QC workflow completed. Filtered reads written to {output_reads}")
 

@@ -317,6 +317,11 @@ def cli_uONT():
         choices=["porechop","dorado"],
         help="The tool to use for adapter removal in the scrubbing workflow",
     )
+    scrub_wf_parser.add_argument(
+        "--write-fastq",
+        action="store_true",
+        help="If input is bam and this is set, the output reads will also be written in fastq format"
+    )
 
 
 
@@ -737,7 +742,8 @@ def cli_uONT():
                 tools=tools,
                 threads=args.threads,
                 dehumanise=args.dehumanise,
-                sequencing_kit=args.sequencing_kit
+                sequencing_kit=args.sequencing_kit,
+                write_fastq=args.write_fastq
             )
 
         elif args.workflow_command == "assemble":
