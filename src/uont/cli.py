@@ -324,7 +324,7 @@ def cli_uONT():
     )
 
 
-
+    from uont.utils import get_available_assemblers
     ##############################
     ##### Workflow: assemble #####
     ##############################
@@ -376,11 +376,12 @@ def cli_uONT():
         help="The tool to use for read downsampling",
     )
     assemble_wf_parser.add_argument(
-        "--assembler-tool",
+        "--assemblers",
         type=str,
-        default="autocycler",
-        choices=["autocycler","flye","raven"],
-        help="The assembler to use for assembly",
+        nargs="+",
+        default=("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
+        choices=get_available_assemblers(),
+        help="The assembler(s) to use for assembly",
     )
     assemble_wf_parser.add_argument(
         "--polishing-tool",
@@ -763,6 +764,7 @@ def cli_uONT():
                 tools=tools,
                 threads=args.threads,
                 threads_per_assembly=args.threads_per_assembly,
+                assemblers=args.assemblers,
                 parallel_assembly_jobs=args.parallel_assembly_jobs,
                 assembly_timeout_seconds=args.assembly_timeout_seconds,
                 min_read_depth=args.min_read_depth,

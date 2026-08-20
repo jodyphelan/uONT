@@ -8,7 +8,7 @@ from enum import Enum
 from importlib import import_module
 import shutil
 from types import SimpleNamespace
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
     
 from .jobs import extract_nanostats_metrics, job_assemble_autocycler, bam2fastq, job_create_fake_asm, job_bam_to_fastq, job_dehumanise_hostile, job_get_contig_depths, job_nanoplot, job_ont_pre_assembly_qc, generate_low_dp_mask, job_collate_fasta_consensus, job_collate_flagstat_jsons, job_map_reads_minimap2, job_mapping_stats_flagstat, job_mask_low_dp_regions, job_remove_adapters_porechop, job_reorient_contigs_dnaapler, job_rmlst, job_split_fasta, job_write_report
@@ -91,7 +91,7 @@ def wf_scrub(
         fastq_output = f"{os.path.splitext(output_reads)[0]}.fastq.gz"
         logging.info(f"Converting filtered BAM to FASTQ: {fastq_output}")
         bam2fastq(input_bam=filtered_reads, output_fastq=fastq_output, threads=threads)
-        
+
     shutil.move(filtered_reads, output_reads)
 
 
@@ -141,6 +141,7 @@ def wf_assemble(
     threads_per_assembly: int = 1,
     parallel_assembly_jobs: int = 1,
     assembly_timeout_seconds: Optional[float] = None,
+    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
     min_read_depth: int = 25,
     max_contigs: int = 80,
     min_read_length: int = 1000,
@@ -270,6 +271,7 @@ def wf_assemble(
             threads_per_assembly=threads_per_assembly,
             parallel_assembly_jobs=parallel_assembly_jobs,
             assembly_timeout_seconds=assembly_timeout_seconds,
+            assemblers=assemblers,
             min_read_depth=min_read_depth,
             max_contigs=max_contigs,
             output_temp_asm_dir=output_temp_asm_dir,

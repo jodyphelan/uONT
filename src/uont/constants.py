@@ -1,0 +1,11 @@
+ASSEMBLERS = [
+    "raven",
+    "myloasm",
+    "miniasm",
+    "flye",
+    "metamdbg",
+    "necat",
+    "nextdenovo",
+    "plassembler",
+    "canu"
+]

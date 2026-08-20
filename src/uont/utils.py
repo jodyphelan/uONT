@@ -372,3 +372,12 @@ def get_plassembler_db_dir() -> Optional[str]:
     if not plassembler_db_dir.exists():
         return None
     return str(plassembler_db_dir)
+
+def get_available_assemblers() -> list[str]:
+    """Return a list of available assemblers from the ASSEMBLERS constant."""
+    from .constants import ASSEMBLERS
+    available_assemblers = []
+    for assembler in ASSEMBLERS:
+        if which(assembler) is not None:
+            available_assemblers.append(assembler)
+    return available_assemblers
