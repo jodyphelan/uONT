@@ -44,11 +44,56 @@ uont deps
         --output-dir results/ \
         --threads 8 
    ```
-3. Inspect the output directory. It should include:
+3. Inspect the output directory with your polished assembly.
+
+### Output files
+
+The output directory will contain the following files:
     - `contigs.fasta`: the final polished assembly
     - `run_report.json`: a JSON file with run statistics and metadata
     - `intermediate_assembly_files`: a directory containing intermediate files from all the individual assemblers run by autocycler, which can be used for troubleshooting or further analysis.
 
+### Tweaking the workflow
+You can tweak the workflow by changing the command line arguments. For example, you can change the assembler used by autocycler, or change the polishing method. See the [CLI documentation](./api/cli.md) for a full list of options.
+
+#### Changing the assemblers used by autocycler
+You can change the assemblers used by autocycler by using the `--assemblers` argument. For example, to use only myloasm and raven, you can run:
+```bash
+uont workflow assemble \
+    --input-reads path/to/reads.fastq.gz \
+    --output-dir results/ \
+    --threads 8 \
+    --assemblers myloasm raven
+```
+
+#### Changing the number of subsamples used by autocycler
+You can change the number of subsamples used by autocycler by using the `--max-samples` argument. For example, to use 2 subsamples, you can run:
+```bash
+uont workflow assemble \
+    --input-reads path/to/reads.fastq.gz \
+    --output-dir results/ \
+    --threads 8 \
+    --max-samples 2
+```
+
+#### Computational resources
+The workflow can be run on a single machine with multiple threads. Almost all of the tools used in the workflow are multithreaded, so you can speed up the workflow by increasing the number of threads. This can be changed with the `--threads` argument. For example, to use 16 threads, you can run:
+```bash
+uont workflow assemble \
+    --input-reads path/to/reads.fastq.gz \
+    --output-dir results/ \
+    --threads 16
+```
+
+The most computationally intensive step is creating the assemblies with the different assemblers. There are two important parameters that control how many assemblies are run in parallel and how many threads are used by each assembler. These are `--parallel-assembly-jobs` and `--threads-per-assembly`. The default is to run 1 assembler in parallel with 4 threads each. You can change this with the following command:
+
+```bash
+uont workflow assemble \
+    --input-reads path/to/reads.fastq.gz \
+    --output-dir results/ \
+    --parallel-assembly-jobs 4 \
+    --threads-per-assembly 8
+```
 
 ## Assemble workflow (default settings)
 
