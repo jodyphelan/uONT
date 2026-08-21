@@ -1,5 +1,5 @@
 """
-CLI-related functions for the uONT pipeline
+CLI-related functions for the uont pipeline
 """
 
 import argparse
@@ -176,8 +176,8 @@ def configure_logging(debug: bool = False, log_file: str | None = None) -> None:
 
         logging.info("Writing logs to file: %s", log_file)
 
-def cli_uONT():
-    """Main entry point for the uONT CLI."""
+def cli_uont():
+    """Main entry point for the uont CLI."""
     parent_parser = argparse.ArgumentParser(
         add_help=False,
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
@@ -213,7 +213,7 @@ def cli_uONT():
         "--version",
         action="version",
         version="%(prog)s " + uont_version,
-        help="Show the version of uONT",
+        help="Show the version of uont",
     )
     parser = argparse.ArgumentParser(
         description="A pipeline to process ONT data to a polished assembly.",
@@ -533,7 +533,7 @@ def cli_uONT():
 
     setup_parser = subparsers.add_parser(
         "setup",
-        help="Setup required tools and databases for uONT",
+        help="Setup required tools and databases for uont",
         parents=[parent_parser],
         formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
     )

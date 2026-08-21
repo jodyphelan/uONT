@@ -1,6 +1,6 @@
 {
-    "uONT version": "0.12.2",
-    "input command": "/Users/b508086/miniforge3/envs/uont/bin/uONT wf assemble --input-reads /Users/b508086/test-data/fastq/180988.fastq.gz --output-dir out --debug",
+    "uont version": "0.12.2",
+    "input command": "/Users/b508086/miniforge3/envs/uont/bin/uont wf assemble --input-reads /Users/b508086/test-data/fastq/180988.fastq.gz --output-dir out --debug",
     "timestamp": "2026-07-06T12:00:18.351942",
     "reads": {
         "reads_n50": 6620,

@@ -1,3 +1,3 @@
-# uONT
+# uont
 
-Documentation at https://jodyphelan.github.io/uONT/
+Documentation at https://jodyphelan.github.io/uont/

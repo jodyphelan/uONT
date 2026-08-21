@@ -43,7 +43,7 @@ from .workflow import (
 
 # Import from cli module
 from .cli import (
-    cli_uONT,
+    cli_uont,
     # cli_prepare,
     initialise_tools,
 )
@@ -61,7 +61,7 @@ __all__ = [
     "job_assemble_autocycler",
     "job_polish_medaka",
     "process_polish",
-    "cli_uONT",
+    "cli_uont",
     "cli_prepare",
     "wf_assemble",
     "initialise_tools",

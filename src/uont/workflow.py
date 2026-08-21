@@ -1,5 +1,5 @@
 """
-Workflow functions for the uONT pipeline
+Workflow functions for the uont pipeline
 """
 
 import os

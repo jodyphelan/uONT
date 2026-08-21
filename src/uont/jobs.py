@@ -1,5 +1,5 @@
 """
-All job functions that perform specific tasks in the uONT workflow are defined here. 
+All job functions that perform specific tasks in the uont workflow are defined here. 
 Each function corresponds to a specific step in the processing pipeline, 
 such as filtering reads, removing adapters, assembling genomes, 
 polishing assemblies, etc. These functions are designed to be called by the 
@@ -1446,7 +1446,7 @@ def job_write_report(
     **kwargs
 ):
     d = {
-        "uONT version": g['uont_version'],
+        "uont version": g['uont_version'],
         "input command": g['input_command'],
         "timestamp": datetime.datetime.now().isoformat(),
 

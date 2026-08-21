@@ -1,4 +1,4 @@
-"""Common type definitions for the uONT package."""
+"""Common type definitions for the uont package."""
 
 from typing import NewType, Optional
 from dataclasses import dataclass

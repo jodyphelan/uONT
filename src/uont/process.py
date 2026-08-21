@@ -1,5 +1,5 @@
 """
-Module containing functions that implement the core processing steps of the uONT workflow.
+Module containing functions that implement the core processing steps of the uont workflow.
 These functions perform specific tasks such as filtering reads, removing adapters, estimating genome size, downsampling reads, assembling genomes, and polishing assemblies. 
 They are designed to be called by the higher-level workflow functions in the workflow module, which orchestrate the overall processing logic and tool selection. 
 Each function takes in the necessary input files and parameters, executes the appropriate commands using the selected tools, and produces the expected output files. 

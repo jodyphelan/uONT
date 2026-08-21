@@ -1,11 +1,11 @@
-<tool id="uont_assemble" name="uONT assemble" version="0.0.1+galaxy0" profile="24.0">
+<tool id="uont_assemble" name="uont assemble" version="0.0.1+galaxy0" profile="24.0">
   <description>assemble ONT reads into polished contigs</description>
   <requirements>
     <requirement type="package" version="0.1.2">uont</requirement>
   </requirements>
   <command detect_errors="exit_code"><![CDATA[
 mkdir -p uont_workdir &&
-uONT workflow assemble
+uont workflow assemble
   --input '$input_reads'
   --assembler-tool '$assembler_tool'
   --threads '$threads'
@@ -36,7 +36,7 @@ tar -cf '$workflow_archive' uont_workdir
     <data name="workflow_archive" format="tar" label="${tool.name} on ${on_string}: workflow archive" />
   </outputs>
   <help><![CDATA[
-This tool wraps `uONT workflow assemble`.
+This tool wraps `uont workflow assemble`.
 
 Inputs:
 

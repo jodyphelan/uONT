@@ -1,10 +1,10 @@
-# uONT
+# uont
 
-This is the uONT package documentation. It provides a set of tools and utilities for processing and analyzing Oxford Nanopore sequencing data. The package includes modules for command-line interface (CLI), data processing, and type definitions.
+This is the uont package documentation. It provides a set of tools and utilities for processing and analyzing Oxford Nanopore sequencing data. The package includes modules for command-line interface (CLI), data processing, and type definitions.
 
 ## Overview
 
-uONT is a batteries-included pipeline that covers the complete journey from raw Nanopore reads to polished assemblies. It bundles individual jobs (wrappers around third-party tools), process-level helpers that pick the right job based on user configuration, and high-level workflows that combine those steps into reproducible runs. The CLI mirrors this structure so you can either invoke the end-to-end workflow or just run a single job for troubleshooting.
+uont is a batteries-included pipeline that covers the complete journey from raw Nanopore reads to polished assemblies. It bundles individual jobs (wrappers around third-party tools), process-level helpers that pick the right job based on user configuration, and high-level workflows that combine those steps into reproducible runs. The CLI mirrors this structure so you can either invoke the end-to-end workflow or just run a single job for troubleshooting.
 
 ### Key features
 - Barcode-aware collation of multiplexed runs driven by sample sheets.
@@ -36,7 +36,7 @@ uont deps
 ```
 
 ## Quick start
-1. Install uONT and run the setup command to install dorado, the dorado basecalling models and the plassembler database. (above)
+1. Install uont and run the setup command to install dorado, the dorado basecalling models and the plassembler database. (above)
 2. Run the CLI:
    ```bash
     uont workflow assemble \
@@ -108,7 +108,7 @@ flowchart TD
 ```
 
 ## Modules
-- [uont.cli](./api/cli.md): Command-line interface functions for running the uONT workflow and individual processing steps.
+- [uont.cli](./api/cli.md): Command-line interface functions for running the uont workflow and individual processing steps.
 - [uont.process](./api/process.md): Core processing functions that implement specific tasks such as filtering reads, removing adapters, estimating genome size, downsampling reads, assembling genomes, and polishing assemblies.
-- [uont.jobs](./api/jobs.md): Job functions that perform specific tasks in the uONT workflow, designed to be called by the process functions and served as command implementations for the CLI interface.
+- [uont.jobs](./api/jobs.md): Job functions that perform specific tasks in the uont workflow, designed to be called by the process functions and served as command implementations for the CLI interface.
 - [uont.workflow](./api/workflow.md): Higher-level workflow functions that orchestrate the overall processing logic and tool selection, calling the appropriate process functions to execute the steps of the workflow.

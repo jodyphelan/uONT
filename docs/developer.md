@@ -1,6 +1,6 @@
 # Developer Guide
 
-This document explains how uONT is structured, how the hierarchy of jobs → processes → workflows → CLI commands works, and the steps required to extend the pipeline safely.
+This document explains how uont is structured, how the hierarchy of jobs → processes → workflows → CLI commands works, and the steps required to extend the pipeline safely.
 
 ```mermaid
 graph TD

@@ -149,11 +149,11 @@ def define_env(env):
         speedup_df = (
             df
             .pivot(index="id", columns="pipeline", values="seconds")
-            .dropna(subset=["old-nanopore-wf", "uONT"])
+            .dropna(subset=["old-nanopore-wf", "uont"])
             .reset_index()
         )
 
-        speedup_df["speedup"] = speedup_df["old-nanopore-wf"] / speedup_df["uONT"]
+        speedup_df["speedup"] = speedup_df["old-nanopore-wf"] / speedup_df["uont"]
         speedup_df["speedup_label"] = speedup_df["speedup"].map(lambda value: f"{value:.1f}x")
 
         chart = (
@@ -165,7 +165,7 @@ def define_env(env):
                 tooltip=[
                     alt.Tooltip("id:N", title="Run ID"),
                     alt.Tooltip("old-nanopore-wf:Q", title="old-nanopore-wf (s)", format=".2f"),
-                    alt.Tooltip("uONT:Q", title="uONT (s)", format=".2f"),
+                    alt.Tooltip("uont:Q", title="uont (s)", format=".2f"),
                     alt.Tooltip("speedup:Q", title="Speedup", format=".2f"),
                 ],
             )

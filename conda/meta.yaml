@@ -52,19 +52,19 @@ test:
   imports:
     - uont
   commands:
-    - uONT --help
+    - uont --help
 
 about:
-  home: https://jodyphelan.github.io/uONT/
+  home: https://jodyphelan.github.io/uont/
   license: MIT
   license_family: MIT
   summary: Pipeline for polishing Oxford Nanopore reads into assemblies.
   description: |
-    uONT provides CLI workflows and helper processes that filter, downsample,
+    uont provides CLI workflows and helper processes that filter, downsample,
     assemble, and polish Oxford Nanopore Technologies sequencing reads into
     high-quality assemblies using tools like chopper, autocycler, filtlong,
     flye, and medaka.
-  dev_url: https://jodyphelan.github.io/uONT/
+  dev_url: https://jodyphelan.github.io/uont/
 
 extra:
   recipe-maintainers:
