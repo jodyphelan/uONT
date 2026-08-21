@@ -184,6 +184,9 @@ def wf_assemble(
         bam_file = input_reads
     else:
         bam_file = None
+        logging.info("Input reads are not in BAM format; setting polishing tool to 'medaka' for polishing with FASTQ reads.")
+        tools.polishing = "medaka"
+
     
     if tools.polishing == "dorado" and bam_file is None:
         raise ValueError("Dorado polishing selected but no BAM file provided. Please provide a BAM file with --bam-for-dorado.")
