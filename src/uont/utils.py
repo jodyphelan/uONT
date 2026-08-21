@@ -347,15 +347,9 @@ def return_job_status(func):
 
 
 def get_dorado_model_dir() -> Optional[str]:
-    dorado_executable = which("dorado")
-    if dorado_executable is None:
-        return None
-    # check if executable is a symlink and resolve it
-    dorado_executable = Path(dorado_executable)
-    if dorado_executable.is_symlink():
-        dorado_executable = dorado_executable.resolve()
-    dorado_executable_dir = Path(os.path.dirname(dorado_executable))
-    dorado_models_dir =  dorado_executable_dir.parent.parent / "dorado_models"
+    conda_base_dir = os.environ.get("CONDA_PREFIX")
+    
+    dorado_models_dir = Path(conda_base_dir) / "dorado_models"
     if not dorado_models_dir.exists():
         return None
     return str(dorado_models_dir)
@@ -447,7 +441,7 @@ def setup_dorado():
         raise ValueError("Dorado still not found in PATH after setup. Please check your installation.")
     else:
         if get_dorado_model_dir() is None:
-            dorado_models_dir = Path(which("dorado")).parent.parent / "dorado_models"
+            dorado_models_dir = Path(os.environ.get("CONDA_PREFIX")) / "dorado_models"
             if not dorado_models_dir.exists():
                 dorado_models_dir.mkdir(parents=True)
             cwd = os.getcwd()
