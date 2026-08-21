@@ -531,7 +531,12 @@ def cli_uONT():
         ),
     )
 
-
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Setup required tools and databases for uONT",
+        parents=[parent_parser],
+        formatter_class=rich_argparse.ArgumentDefaultsRichHelpFormatter,
+    )
 
 
     # Set up job and process subparsers
@@ -838,5 +843,9 @@ def cli_uONT():
             logging.error("Missing dependencies: %s", ", ".join(missing))
             sys.exit(1)
         logging.info("All checked dependencies are available.")
+    elif args.command == "setup":
+        from .utils import setup_dorado, setup_plassembler_db
+        setup_dorado()
+        setup_plassembler_db()
     else:
         parser.print_help()

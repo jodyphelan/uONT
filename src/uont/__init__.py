@@ -3,7 +3,7 @@ A package to process ONT data
 to a polished assembly
 """
 
-__version__ = "0.25.1"
+__version__ = "0.26.0"
 
 import logging
 from rich.logging import RichHandler

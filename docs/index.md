@@ -14,35 +14,41 @@ uONT is a batteries-included pipeline that covers the complete journey from raw 
 
 ## Install 
 
-### With pixi
+### With conda/mamba/micromamba
 
 ```
-pixi install 
-pip install git+https://github.com/jodyphelan/uONT.git
+conda install -c conda-forge -c bioconda jodyphelan::uont
+```
+
+### Extra setup
+You'll need to have dorado, the dorado basecalling models and the plassembler database installed. You can do this with the `setup` command:
+
+```bash
+uont setup
+```
+
+### Check installation
+
+You can check that all dependencies are installed and available in your PATH with the `check` command:
+
+```bash
+uont deps
 ```
 
 ## Quick start
-1. Install dependencies (via `pixi install` or `pip install -e .`).
+1. Install uONT and run the setup command to install dorado, the dorado basecalling models and the plassembler database. (above)
 2. Run the CLI:
    ```bash
     uont workflow assemble \
-        --input path/to/reads.fastq.gz \
+        --input-reads path/to/reads.fastq.gz \
         --output-dir results/ \
-        --assembler-tool autocycler \
-        --polishing-tool medaka
+        --threads 8 
    ```
-3. Inspect the generated `polished_assembly.fasta` file under the output directory.
+3. Inspect the output directory. It should include:
+    - `contigs.fasta`: the final polished assembly
+    - `run_report.json`: a JSON file with run statistics and metadata
+    - `intermediate_assembly_files`: a directory containing intermediate files from all the individual assemblers run by autocycler, which can be used for troubleshooting or further analysis.
 
-You can also invoke specific processes (e.g., `uont process fastq-filter ...`) to debug or swap out stages.
-
-For example, just want to run autocycler on some reads you have already filtered and downsampled? You can do that with:
-
-```bash
-uont job autocycler-assemble \
-    --input-fastq path/to/filtered_downsampled_reads.fastq.gz \
-    --output-fasta path/to/autocycler_assembly.fasta \
-    --threads 8
-```
 
 ## Assemble workflow (default settings)
 

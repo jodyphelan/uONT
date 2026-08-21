@@ -1,6 +1,7 @@
 import logging
 from enum import Enum
 from pathlib import Path
+import platform
 import subprocess as sp
 import re
 import signal
@@ -16,6 +17,7 @@ from .types import FullPath
 from dataclasses import fields
 import uont
 import sys
+from .constants import DORADO_VERSION
 
 DEFAULT_CLI_DEPENDENCIES = [
     "autocycler",
@@ -347,13 +349,13 @@ def return_job_status(func):
 def get_dorado_model_dir() -> Optional[str]:
     dorado_executable = which("dorado")
     if dorado_executable is None:
-        raise ValueError("Dorado executable not found in PATH.")
+        return None
     # check if executable is a symlink and resolve it
     dorado_executable = Path(dorado_executable)
     if dorado_executable.is_symlink():
         dorado_executable = dorado_executable.resolve()
     dorado_executable_dir = Path(os.path.dirname(dorado_executable))
-    dorado_models_dir =  dorado_executable_dir.parent / "models"
+    dorado_models_dir =  dorado_executable_dir.parent.parent / "dorado_models"
     if not dorado_models_dir.exists():
         return None
     return str(dorado_models_dir)
@@ -381,3 +383,85 @@ def get_available_assemblers() -> list[str]:
         if which(assembler) is not None:
             available_assemblers.append(assembler)
     return available_assemblers
+
+def get_platform() -> str:
+    """Return the platform string for Dorado download URL."""
+    operating_system = {"linux":"linux","darwin":"osx"}.get(sys.platform,None)
+    return operating_system
+
+def get_architecture() -> str:
+    """Return the architecture string for Dorado download URL."""
+    architecture = {"x86_64":"x64","arm64":"arm64"}.get(platform.machine(),None)
+    return architecture
+
+def get_dorado_url(version: str) -> str:
+    """Return the download URL for the specified version of Dorado."""
+    operating_system = get_platform()
+    if operating_system is None:
+        raise ValueError(f"Unsupported operating system: {sys.platform}")
+    architecture = get_architecture()
+    if architecture is None:
+        raise ValueError(f"Unsupported architecture: {platform.machine()}")
+
+
+    extension = "tar.gz"  if operating_system == "linux" else "zip"
+    return f"https://cdn.oxfordnanoportal.com/software/analysis/dorado-{version}-{operating_system}-{architecture}.{extension}"
+
+def setup_dorado():
+    """Check if dorado exists and if not download in the right location and add to PATH."""
+    from .constants import DORADO_VERSION
+    dorado_path = which("dorado")
+    print(f"Checking for dorado in PATH: {dorado_path}")
+    if dorado_path is None:
+        # conda base dir $CONDA_PREFIX
+        conda_base_dir = os.environ.get("CONDA_PREFIX")
+        if conda_base_dir is None:
+            raise ValueError("Dorado not found in PATH and CONDA_PREFIX is not set. Please install dorado or activate your conda environment.")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # download dorado from cdn
+    
+            url = get_dorado_url(DORADO_VERSION)
+            if url.endswith(".zip"):
+                cmd = f"curl -L {url} -o {tmpdir}/dorado.zip"
+                sp.run(cmd, shell=True, check=True)
+                # extract dorado to conda base dir
+                cmd = f"unzip -q {tmpdir}/dorado.zip -d {conda_base_dir}"
+                sp.run(cmd, shell=True, check=True)
+            else:
+
+                cmd = f"curl -L {url} -o {tmpdir}/dorado.tar.gz"
+                sp.run(cmd, shell=True, check=True)
+                # extract dorado to conda base dir
+                cmd = f"tar -xzf {tmpdir}/dorado.tar.gz -C {conda_base_dir}"
+                sp.run(cmd, shell=True, check=True)
+
+            # symlink dorado to conda base dir bin
+            dorado_extracted_dir = Path(conda_base_dir) / f"dorado-{DORADO_VERSION}-{get_platform()}-{get_architecture()}"
+            dorado_bin_dir = dorado_extracted_dir / "bin"
+            conda_bin_dir = Path(conda_base_dir) / "bin"
+            symlink_path = conda_bin_dir / "dorado"
+            if not symlink_path.exists():
+                os.symlink(dorado_bin_dir / "dorado", symlink_path)
+
+    if which("dorado") is None:
+        raise ValueError("Dorado still not found in PATH after setup. Please check your installation.")
+    else:
+        if get_dorado_model_dir() is None:
+            dorado_models_dir = Path(which("dorado")).parent.parent / "dorado_models"
+            if not dorado_models_dir.exists():
+                dorado_models_dir.mkdir(parents=True)
+            cwd = os.getcwd()
+            os.chdir(dorado_models_dir)
+            sp.run("dorado download", shell=True, check=True)
+            os.chdir(cwd)
+    logging.info(f"Dorado setup complete. Dorado executable: {which('dorado')}, models directory: {get_dorado_model_dir()}")
+
+def setup_plassembler_db():
+    if get_plassembler_db_dir() is None:
+        conda_base_dir = os.environ.get("CONDA_PREFIX")
+        plassembler_db_dir = Path(conda_base_dir) / "plassembler_db"
+        #plassembler download -d "$CONDA_PREFIX"/plassembler_db
+        cmd = f"plassembler download -d {plassembler_db_dir}"
+        sp.run(cmd, shell=True, check=True)
+
+    logging.info(f"Plassembler database setup complete. Plassembler db directory: {get_plassembler_db_dir()}")
