@@ -624,6 +624,12 @@ def job_polish_dorado(
     tmp_dir = kwargs.get("tmp_dir")
     os.makedirs(tmp_dir, exist_ok=True)
 
+    header_info = {}
+    for l in open(input_assembly):
+        if l.startswith(">"):
+            contig_name = l.strip().split()[0][1:]  # Remove '>' and get contig name
+            header_info[contig_name] = l.strip()[1:]  # Store the full header without '>'
+
     if models_path:
         logging.info(f"Using custom dorado models from {models_path}")
         models_string = f"--models-directory {models_path}"
@@ -642,7 +648,13 @@ def job_polish_dorado(
         run_cmd(cmd)
         input_assembly = tmp_asm  # Update input_assembly for the next round
 
-    shutil.move(tmp_asm, output_assembly)
+    reheadered_asm = f"reheadered_asm.fasta"
+    fasta = pysam.FastaFile(tmp_asm)
+    with open(reheadered_asm, "w") as out:
+        for contig in fasta.references:
+            out.write(f">{header_info[contig]}\n")
+            out.write(fasta.fetch(contig) + "\n")
+    shutil.move(reheadered_asm, output_assembly)
     logging.info(f"Dorado polishing completed. Output: {output_assembly}")
     return JobStatus.SUCCESS
 
