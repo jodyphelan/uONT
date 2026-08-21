@@ -18,4 +18,4 @@ dependencies = [
 ]
 
 [project.scripts]
-uont = "uont:cli_uONT"
+uont = "uont:cli_uont"
