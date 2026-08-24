@@ -350,9 +350,9 @@ def process_polish(
         ValueError: If specified polishing tool is not supported.
     """
     if polishing_tool == "medaka":
-        return job_polish_medaka(input_reads, input_assembly, output_assembly, threads, **kwargs)
+        return job_polish_medaka(input_reads, input_assembly, output_assembly, threads=threads, **kwargs)
     elif polishing_tool == "dorado":
-        return job_polish_dorado(input_reads, input_assembly, output_assembly, threads, **kwargs)
+        return job_polish_dorado(input_reads, input_assembly, output_assembly, threads=threads, **kwargs)
     else:
         raise ValueError(f"Tool {polishing_tool} not supported for polishing.")
     
