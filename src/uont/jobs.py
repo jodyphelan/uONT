@@ -384,6 +384,7 @@ def job_assemble_autocycler(
     min_read_depth: int = 10,
     max_contigs: int = 80,
     max_samples: int = 4,
+    additional_assemblies_dir: Optional[FullPath] = None,
     **kwargs
 ) -> None:
     """Run complete autocycler assembly workflow.
@@ -440,11 +441,15 @@ def job_assemble_autocycler(
     # 3. Make assemblies for each subsampled read
     logging.info(f"Creating assemblies using {assemblers}")
     os.makedirs(f"{autocycler_output_dir}/autocycler_assemblies", exist_ok=True)
+
+    if additional_assemblies_dir:
+        logging.info(f"Copying additional assemblies from {additional_assemblies_dir} to {autocycler_output_dir}/autocycler_assemblies")
+        for assembly_file in glob(f"{additional_assemblies_dir}/*"):
+            shutil.copy(assembly_file, f"{autocycler_output_dir}/autocycler_assemblies/")
     
     # Get list of sample files
-    import glob
-    sample_files = sorted(glob.glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
-    sample_files = sample_files[:max_samples]
+
+    sample_files = sorted(glob(f"{autocycler_output_dir}/subsampled_reads/sample_*.fastq"))
 
     combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
 
@@ -473,7 +478,7 @@ def job_assemble_autocycler(
 
     # 3.5 remove any empty assembly files
     logging.info("Removing empty assembly files")
-    assembly_files = glob.glob(f"{autocycler_output_dir}/autocycler_assemblies/*_*.fasta")
+    assembly_files = glob(f"{autocycler_output_dir}/autocycler_assemblies/*_*.fasta")
     for assembly_file in assembly_files:
         if os.path.getsize(assembly_file) == 0:
             logging.warning(f"Removing empty assembly file: {assembly_file}")
@@ -493,11 +498,11 @@ def job_assemble_autocycler(
     logging.info("Trimming and resolving clusters")
 
     ## check for qc_pass clusters
-    if not glob.glob(f"{autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*"):
+    if not glob(f"{autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*"):
         logging.warning("No clusters passed QC. Check the clustering output and adjust parameters if necessary.")
         return None
     
-    cluster_dirs = glob.glob(f"{autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*")
+    cluster_dirs = glob(f"{autocycler_output_dir}/autocycler_out/clustering/qc_pass/cluster_*")
     for cluster_dir in tqdm(sorted(cluster_dirs),desc="Processing clusters"):
         logging.debug(f"Processing {os.path.basename(cluster_dir)}")
         trim_cmd = f"autocycler trim -c {cluster_dir} --threads {threads}"

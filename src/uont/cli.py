@@ -493,6 +493,12 @@ def cli_uont():
         action="store_true",
         help="If set, the unpolished assembly will be saved to the output directory in addition to the polished assembly",
     )
+    assemble_wf_parser.add_argument(
+        "--additional-assemblies-dir",
+        type=file_path,
+        default=None,
+        help="Optional directory containing additional assemblies to include in the final assembly set",
+    )
 
 
     ########## END Workflow: assemble ##########
@@ -784,7 +790,8 @@ def cli_uont():
                 batch_size=args.medaka_batch_size,
                 models_directory=args.models_directory,
                 save_filtered_reads=args.save_filtered_reads,
-                save_unpolished_contigs=args.save_unpolished_contigs
+                save_unpolished_contigs=args.save_unpolished_contigs,
+                additional_assemblies_dir=args.additional_assemblies_dir
             )
             
         

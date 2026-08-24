@@ -151,6 +151,7 @@ def wf_assemble(
     save_filtered_reads: bool = False,
     save_unpolished_contigs: bool = False,
     max_samples: int = 4,
+    additional_assemblies_dir: Optional[FullPath] = None,
     **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
@@ -279,6 +280,7 @@ def wf_assemble(
             max_contigs=max_contigs,
             output_temp_asm_dir=output_temp_asm_dir,
             max_samples=max_samples,
+            additional_assemblies_dir=additional_assemblies_dir
         )
         pipeline_checkpoints['assembly'] = JobStatus.SUCCESS
     except Exception as e:
