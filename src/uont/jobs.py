@@ -1282,7 +1282,7 @@ def job_concatenate_ont_data(
         if remove_source_bams:
             for bam in bam_files:
                 os.remove(bam)
-                logging.info(f"Removed source BAM file {bam} for sample {sample_id}")
+                logging.debug(f"Removed source BAM file {bam} for sample {sample_id}")
         if write_fastq:
             output_fastq = os.path.join(output_dir, f"{sample_id}.fastq.gz")
             cmd = f"samtools fastq {output_bam} | pigz -p {threads} -c > {output_fastq}"
