@@ -222,7 +222,7 @@ def wf_assemble(
     ns = extract_nanostats_metrics(
         input_nano_stats="nanoplot_qc/NanoStats.txt",
     )
-    num_reads = int(ns['above_Q10'].split()[0])
+    num_reads = ns['above_Q10']
 
 
     if num_reads < 10000:
@@ -262,7 +262,7 @@ def wf_assemble(
         else:
             logging.info(f"Estimated genome size: {genome_size} bp")
             pipeline_checkpoints['genome_size_estimation'] = JobStatus.SUCCESS
-    
+
     # 3. Run assembly
     raw_assembly_file = f"raw_assembly.fasta"
     output_temp_asm_dir = f"intermediate_assembly_files"

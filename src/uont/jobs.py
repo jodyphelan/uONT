@@ -643,13 +643,13 @@ def job_polish_dorado(
 
     for round in range(1, rounds+1):
         # align
-        cmd = f"dorado  aligner -t {threads} {input_assembly} {input_bam} | samtools sort -@ {threads} -o aligned_{round}.bam -"
+        cmd = f"dorado aligner -t {threads} {input_assembly} {input_bam} | samtools sort -@ {threads} -o aligned_{round}.bam -"
         run_cmd(cmd)
         cmd = f"samtools index aligned_{round}.bam"
         run_cmd(cmd)
 
         tmp_asm = f"round{round}_asm.fasta"
-        cmd = f"dorado  polish -t {threads} --ignore-read-groups --bacteria aligned_{round}.bam {input_assembly} {models_string} > {tmp_asm}"
+        cmd = f"dorado polish -t {threads} --ignore-read-groups --bacteria aligned_{round}.bam {input_assembly} {models_string} > {tmp_asm}"
         run_cmd(cmd)
         input_assembly = tmp_asm  # Update input_assembly for the next round
 
@@ -1396,15 +1396,20 @@ def extract_nanostats_metrics(
         'Reads >Q30:': 'above_Q30',
     }
     for row in csv.DictReader(open(input_nano_stats), delimiter="\t"):
+        if row['Metrics'] == 'number_of_reads':
+            metrics['reads_total_number'] = int(float(row['dataset']))
+        elif row['Metrics'] == 'number_of_bases':
+            metrics['reads_total_bases'] = int(float(row['dataset']))
+        elif row['Metrics'] == 'n50':
+            metrics['reads_n50'] = float(row['dataset'].replace(',',''))
+        elif row['Metrics'] == 'mean_qual':
+            metrics['mean_quality'] = float(row['dataset'].replace(',',''))
+        elif ">Q" in row['Metrics']:
+            metrics[metrics_map[row['Metrics']]] = int(row['dataset'].split()[0])
+                
 
-        if row['Metrics'] in metrics_map:
-            try:
-                try:
-                    metrics[metrics_map[row['Metrics']]] = int(row['dataset'])
-                except:
-                    metrics[metrics_map[row['Metrics']]] = float(row['dataset'])
-            except:
-                metrics[metrics_map[row['Metrics']]] = str(row['dataset'])
+
+
     return metrics
 
 def get_circular_contigs(
