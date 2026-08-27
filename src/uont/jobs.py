@@ -1547,7 +1547,7 @@ def get_fasta_dict(
         line = l.rstrip()
         if line=="": continue
         if line.startswith(">"):
-            seq_name = line[1:].split()[0]
+            seq_name = line[1:]
             fa_dict[seq_name] = []
         else:
             fa_dict[seq_name].append(line)
