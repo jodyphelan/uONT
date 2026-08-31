@@ -1531,7 +1531,8 @@ def job_nanoplot(
     return JobStatus.SUCCESS
 
 def get_fasta_dict(
-    input_fasta: FullPath
+    input_fasta: FullPath,
+    first_word: bool = True,
 ) -> dict:
     """Read a FASTA file and return a dictionary mapping contig names to sequences.
     
@@ -1548,6 +1549,8 @@ def get_fasta_dict(
         if line=="": continue
         if line.startswith(">"):
             seq_name = line[1:]
+            if first_word:
+                seq_name = seq_name.split()[0]
             fa_dict[seq_name] = []
         else:
             fa_dict[seq_name].append(line)
@@ -1581,7 +1584,7 @@ def job_split_fasta(
 
     for contig_name,seq in seq_dict.items():
         
-        contig_file = os.path.join(output_dir, f"{contig_name}.fasta")
+        contig_file = os.path.join(output_dir, f"{contig_name.split()[0]}.fasta")
         with open(contig_file, "w") as O:
             O.write(f">{contig_name}\n{seq}\n")
 
