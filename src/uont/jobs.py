@@ -1,12 +1,7 @@
-"""
-All job functions that perform specific tasks in the uont workflow are defined here. 
-Each function corresponds to a specific step in the processing pipeline, 
-such as filtering reads, removing adapters, assembling genomes, 
-polishing assemblies, etc. These functions are designed to be called by the 
-higher-level process functions in the process module, which handle the overall 
-workflow logic and tool selection. They are also served as command implementations 
-for the CLI interface, allowing users to run specific steps directly from the 
-command line if desired.
+"""Jobs that implement individual steps of the uONT processing workflow.
+
+The higher-level process functions select and compose these jobs into workflows.
+Most jobs are also exposed as individual CLI commands.
 """
 
 from collections import OrderedDict, defaultdict
@@ -44,7 +39,7 @@ def job_fastq_filter_chopper(
     quality: int = 10,
     minreadlen: int = 1000,
 ) -> None:
-    """Filter and quality-trim reads using chopper.
+    """Filter reads by quality and minimum length with chopper.
     
     Args:
         input_fastq (FullPath): Path to input fastq file.
@@ -54,7 +49,8 @@ def job_fastq_filter_chopper(
         minreadlen (int): Minimum read length in base pairs. Defaults to 1000.
 
     Returns:
-        None
+        JobStatus: ``SUCCESS`` when filtering completes; ``FAILED`` if it raises an
+            exception.
     """
     logging.info(f"Running chopper on {input_fastq} with output {output_fastq} using {threads} threads.")
     cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} | pigz -p {threads} -c > {output_fastq}"
@@ -70,14 +66,17 @@ def job_assemble_miniasm(
     threads: int,
     **kwargs
 ) -> None:
-    """
-    Assemble reads using miniasm.
+    """Assemble reads with miniasm after all-versus-all minimap2 mapping.
 
     Args:
-        input_fastq: Path to the input FASTQ file.
-        output_assembly: Path where the assembly FASTA will be written.
-        genome_size: Estimated genome size for assembly parameters.
-        threads: Number of threads to use for assembly.
+        input_fastq (FullPath): Path to the input FASTQ file.
+        output_assembly (FullPath): Path where the assembly FASTA will be written.
+        threads (int): Number of threads to use for minimap2.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
+    Returns:
+        None
     """
     logging.info(f"Running miniasm with input: {input_fastq}")
 
@@ -116,21 +115,27 @@ def job_ont_pre_assembly_qc(
     keeppercent: int = 90,
     **kwargs
 ) -> JobStatus:
-    """Basic filtering of nanopore reads using chopper and filtlong.
+    """Crop and filter nanopore reads with chopper and filtlong.
+
+    Chopper removes fixed numbers of bases from both read ends and applies the
+    quality and length thresholds. Filtlong then retains the highest-quality
+    reads up to ``keeppercent`` of the input bases.
     
     Args:
         input_fastq (FullPath): Path to input fastq file.
         output_fastq (FullPath): Path to output filtered fastq file.
         threads (int): Number of threads to use. Defaults to 4.
-        quality (int): Minimum quality threshold. Defaults to 10.
+        quality (int): Minimum quality threshold. Defaults to 12.
         minreadlen (int): Minimum read length in base pairs. Defaults to 1000.
         headcrop (int): Number of bases to crop from the start of each read. Defaults to 80.
         tailcrop (int): Number of bases to crop from the end of each read. Defaults to 80.
         keeppercent (int): Percentage of reads to keep based on quality. Defaults to 90.
-        **kwargs: Additional keyword arguments.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
-        JobStatus: Status of the pre-assembly QC job, including success or failure and any relevant messages.
+        JobStatus: ``SUCCESS`` when filtering completes; ``FAILED`` if it raises an
+            exception.
     """
     logging.info(f"Running basic filtering on {input_fastq} with output {output_fastq} using {threads} threads.")
     # chopper
@@ -175,7 +180,8 @@ def job_assemble_flye(
         input_fastq (FullPath): Path to input fastq file with reads.
         output_fasta (FullPath): Path to output assembly fasta file.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Optional Flye parameters such as ``genome_size``.
+        kwargs (dict[str, object]): May include ``genome_size``, which is passed to
+            Flye as ``--genome-size``. Other keys are ignored.
 
     Returns:
         None
@@ -199,15 +205,19 @@ def job_reorient_contigs_dnaapler(
     threads: int = 4,
     **kwargs
 ) -> JobStatus:
-    """Reorient contigs to start at dnaA using dnaapler.
+    """Reorient contigs with ``dnaapler all``.
     
     Args:
         input_fasta (FullPath): Path to input assembly fasta file.
         output_fasta (FullPath): Path where reoriented assembly fasta will be written.
+        output_stats (FullPath): Destination for the dnaapler reorientation summary.
         threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
-        JobStatus: Status of the reorient contigs job, including success or failure and any relevant messages.
+        JobStatus: ``SUCCESS`` when reorientation completes; ``FAILED`` if it raises
+            an exception. The summary is moved only when ``output_stats`` is truthy.
     """
     logging.info(f"Running dnaapler to reorient contigs in {input_fasta} using {threads} threads.")
     cmd = f"dnaapler all --input {input_fasta} --output output.dnaapler --threads {threads}"
@@ -232,7 +242,8 @@ def job_assemble_raven(
         input_fastq (FullPath): Path to input fastq file with reads.
         output_fasta (FullPath): Path to output assembly fasta file.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Optional Raven parameters such as ``genome_size``.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
         None
@@ -259,7 +270,11 @@ def job_reheader_fasta(
     sample_name: str,
 ) -> None:
     """
-    Reheader a FASTA file using the headers from a GFA file.
+    Reheader a FASTA file using information from the run report JSON file.
+
+    Headers for contigs recorded in the run report use the format
+    ``>{sample_name}_c{contig_name}_{length}bp_{circular_or_linear}
+    circular={circular}``. Headers for contigs missing from the report are retained.
 
     Args:
         input_fasta (FullPath): Path to the input FASTA file.
@@ -298,15 +313,23 @@ def job_get_contig_depths(
     threads: int = 4,
     **kwargs
 ) -> JobStatus:
-    """Calculate contig depths by mapping reads to assembly using minimap2 and samtools.
+    """Calculate mean and median depth for each assembly contig.
+
+    Reads are mapped with minimap2, including zero-coverage positions in the
+    calculation. The output is a JSON list with ``contig``, ``mean_depth``,
+    ``median_depth``, and ``length`` fields.
     
     Args:
         input_fasta (FullPath): Path to input assembly fasta file.
         input_fastq (FullPath): Path to input fastq reads file.
         output_depths (FullPath): Path where contig depth information will be written.
         threads (int): Number of threads to use. Defaults to 4.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
     Returns:
-        JobStatus: Status of the contig depth calculation job, including success or failure and any relevant messages.
+        JobStatus: ``SUCCESS`` when depth calculation completes; ``FAILED`` if it
+            raises an exception.
     """
     logging.info(f"Calculating contig depths for {input_fasta} using reads from {input_fastq} with {threads} threads.")
     
@@ -387,15 +410,16 @@ def job_assemble_autocycler(
     additional_assemblies_dir: Optional[FullPath] = None,
     **kwargs
 ) -> None:
-    """Run complete autocycler assembly workflow.
-    
-    Performs the full autocycler pipeline including subsampling, multiple assemblies,
-    compression, clustering, trimming, resolving, and combining into final consensus.
+    """Run the full Autocycler multi-assembler workflow.
+
+    The workflow subsamples reads, runs each selected Autocycler helper assembler,
+    compresses and clusters the assemblies, then trims, resolves, and combines
+    QC-passing clusters into a consensus assembly.
     
     Workflow:
         1. Subsample reads into multiple subsets
         2. Run QC on subsampled reads with seqkit
-        3. Assemble each subset using specified assembler
+        3. Assemble each subset using every selected assembler
         4. Compress assemblies
         5. Cluster assemblies
         6. Trim and resolve clusters
@@ -405,17 +429,31 @@ def job_assemble_autocycler(
         input_fastq (FullPath): Path to input fastq file with reads.
         output_fasta (FullPath): Destination path for the consensus FASTA file.
         genome_size (int): Estimated genome size in base pairs.
+        output_temp_asm_dir (FullPath): Destination directory for intermediate
+            per-assembler FASTA files. Files are moved only when this value is truthy.
         threads (int): Number of threads to use. Defaults to 4.
-        max_samples (int): Maximum number of subsampled read sets to generate. Defaults to 4.
-        output_temp_asm_dir (FullPath): Directory to store temporary assembly files.
-        assembly_timeout_seconds (Optional[float]): Per-assembly timeout in seconds. Defaults to None.
-        assemblers (Tuple[str]): Assemblers to use (``miniasm``, ``flye``, ``raven``). Defaults to ``("flye", "miniasm")``.
+        threads_per_assembly (int): Threads assigned to each helper assembler.
+            Defaults to 1.
+        parallel_assembly_jobs (int): Number of helper assemblies to run in
+            parallel. Defaults to 4.
+        assembly_timeout_seconds (Optional[float]): Timeout for one helper assembly,
+            in seconds. ``None`` disables the timeout.
+        assemblers (Tuple[str, ...]): Autocycler helper assemblers to run. Defaults
+            to ``("flye", "miniasm", "nextdenovo", "raven", "plassembler",
+            "myloasm")``; ``nextdenovo`` is skipped on ARM64.
         min_read_depth (int): Minimum read depth for subsampling. Defaults to 10.
-        max_contigs (int): Maximum number of contigs allowed. Defaults to 80.
-        kwargs (dict[str, object]): Extra parameters accepted for interface symmetry.
+        max_contigs (int): Maximum number of contigs accepted by Autocycler.
+            Defaults to 80.
+        max_samples (int): Maximum number of subsampled read sets to generate. Defaults to 4.
+        additional_assemblies_dir (Optional[FullPath]): Directory of assembly files to
+            copy into the Autocycler assembly set before compression.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
-        None
+        JobStatus: ``SUCCESS`` when the function returns normally; ``FAILED`` if it
+            raises an exception. If no clusters pass QC, the function returns without
+            writing ``output_fasta`` and is still reported as ``SUCCESS``.
     """
     logging.info(f"Starting autocycler assembly workflow")
     
@@ -454,6 +492,7 @@ def job_assemble_autocycler(
     combinations = [(sample_file, assembler) for sample_file in sample_files for assembler in assemblers]
 
     def assemble_sample(sample_file, assembler, threads_per_job=threads_per_assembly):
+        """Run one Autocycler helper assembler for a subsampled read set."""
         sample_num = os.path.basename(sample_file).replace("sample_", "").replace(".fastq", "")
         logging.debug(f"Assembling sample {sample_num} with {assembler}")
         # monitor execution times
@@ -531,8 +570,8 @@ def job_estimate_genome_size_lrge(
 ):
     """Estimate genome size using lrge.
 
-    Uses lrge's estimate_genome_size command to estimate the genome size
-    from the input reads.
+    Invokes the lrge command-line tool and returns the size it writes to a
+    temporary output file.
 
     Args:
         input_fastq (FullPath): Path to input fastq file.
@@ -592,6 +631,7 @@ def job_downsample_filtlong(
         input_fastq (FullPath): Path to input fastq file.
         output_fastq (FullPath): Path to output downsampled fastq file.
         target_bases (int): Target number of bases to retain.
+        threads (int): Number of pigz compression threads to use. Defaults to 4.
 
     Returns:
         None
@@ -612,17 +652,24 @@ def job_polish_dorado(
     rounds: int = 2,
     **kwargs
 ) -> JobStatus:
-    """Polish an assembly using dorado.
+    """Polish an assembly with one or more Dorado rounds.
+
+    Each round aligns ``input_bam`` to the current assembly and then runs
+    ``dorado polish``. Original FASTA headers are restored in the final output.
     
     Args:
         input_bam (FullPath): Path to input BAM file used for polishing.
         input_assembly (FullPath): Path to input assembly fasta file to polish.
         output_assembly (FullPath): Path where polished assembly will be written.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Additional options including ``tmp_dir``.
+        models_path (str): Optional directory containing Dorado models.
+        rounds (int): Number of alignment and polishing rounds. Defaults to 2.
+        kwargs (dict[str, object]): Additional options. The ``run_in_tempdir``
+            decorator supplies ``tmp_dir`` internally.
 
     Returns:
-        JobStatus: Status of the polishing job.
+        JobStatus: ``SUCCESS`` when polishing completes; ``FAILED`` if it raises an
+            exception.
     """
     logging.info(f"Running dorado polishing on {input_assembly}")
     
@@ -676,21 +723,25 @@ def job_polish_medaka(
     medaka_batch_size: int = 100,
     **kwargs
 ) -> JobStatus:
-    """Polish an assembly twice using medaka consensus.
+    """Polish an assembly twice with Medaka consensus.
     
-    Performs two rounds of medaka polishing with bacterial model to improve
-    assembly accuracy. The first round polishes the input assembly, and the
-    second round polishes the first round output.
+    The function first attempts the bacterial model. If the first round reports
+    that the input is incompatible with that model, both rounds use Medaka's
+    default model instead.
     
     Args:
         input_reads (FullPath): Path to input fastq reads file used for polishing.
         input_assembly (FullPath): Path to input assembly fasta file to polish.
         output_assembly (FullPath): Path where final polished assembly will be written.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Additional options including ``tmp_dir``.
+        medaka_batch_size (int): Batch size passed to ``medaka_consensus``.
+            Defaults to 100.
+        kwargs (dict[str, object]): Additional options. The ``run_in_tempdir``
+            decorator supplies ``tmp_dir`` internally.
 
     Returns:
-        JobStatus: Status of the polishing job.
+        JobStatus: ``SUCCESS`` when polishing completes; ``FAILED`` if it raises an
+            exception.
     """
     
     logging.info(f"Running medaka polishing (round 1) for {input_assembly}")
@@ -758,9 +809,11 @@ def job_mask_low_dp_regions(
     bed_file: FullPath,
     output_fasta: FullPath
 ) -> None:
-    """Mask low depth regions in an assembly based on a BED file.
-    
-    Replaces sequences in the input FASTA with Ns at positions specified in the BED file.
+    """Mask BED intervals with ``N`` characters in the first FASTA contig.
+
+    This function reads only the first reference sequence in ``input_fasta`` and
+    writes only that sequence to ``output_fasta``. BED chromosome names are not
+    validated.
     
     Args:
         input_fasta (FullPath): Path to input assembly fasta file.
@@ -796,6 +849,8 @@ def job_rmlst(
     Args:
         input_fasta (FullPath): Path to input assembly fasta file.
         output_tsv (FullPath): Path where rMLST results will be written.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
         None
@@ -813,7 +868,9 @@ def generate_low_dp_mask(
     **kwargs
 ) -> None:
     """
-    Generate a BED file of low depth regions based on a BAM file and reference FASTA.
+    Generate one-base BED intervals for low-depth positions in the first reference.
+
+    Positions not reported by ``samtools depth`` are treated as having zero depth.
     Args:
         bam (FullPath): Path to input BAM file with reads mapped to reference.
         ref (FullPath): Path to reference FASTA file.
@@ -853,13 +910,14 @@ def job_dehumanise_hostile(
         threads: int = 4,
         **kwargs
 ) -> None:
-    """Dehumanise reads using hostile.
+    """Remove human reads with hostile.
     
     Args:
         input_fastq (FullPath): Path to input fastq file with reads.
         output_fastq (FullPath): Path where dehumanised fastq will be written.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
         None
@@ -880,6 +938,19 @@ def get_fastq_QC_metrics(
     min_read_length: int = 1000,
     **kwargs
 ) -> QCMetrics:
+    """Extract basic read metrics from ``seqkit stats`` output.
+
+    Args:
+        input_fastq (FullPath): Path to the FASTQ file to summarise.
+        min_read_length (int): Accepted for API compatibility but not currently
+            applied.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
+    Returns:
+        dict[str, int]: Read N50, total read count, and total bases under the
+            ``reads_n50``, ``reads_total_number``, and ``reads_total_bases`` keys.
+    """
     metrics = {}
     seqkit_stats_file = f"seqkit_stats.tsv"
     cmd = f"seqkit stats -Ta {input_fastq} > {seqkit_stats_file}"
@@ -898,17 +969,23 @@ def job_get_qc_metrics(
     min_contig_length: int = 1000,
     **kwargs
 ) -> QCMetrics:
-    """
-    Calculate QC metrics for both reads and contigs, and combine into a single QCMetrics dataclass.
+    """Calculate contig QC metrics for an assembly.
+
+    ``input_reads`` is currently accepted for workflow compatibility but is not
+    used. The function returns a dictionary containing only the ``contigs``
+    metrics calculated by :class:`~uont.qc.Fasta`.
 
     Args:
-        input_reads (FullPath): Path to input fastq file with reads.
+        input_reads (FullPath): Path to input FASTQ reads. It is not currently
+            used.
         input_fasta (FullPath): Path to input assembly fasta file with contigs.
-        min_contig_length (int): Minimum contig length to consider for metrics. Defaults to
-        1000.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+        min_contig_length (int): Minimum contig length included in metrics.
+            Defaults to 1000.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
     Returns:
-        QCMetrics: Dataclass containing combined QC metrics for reads and contigs.
+        dict[str, object]: Dictionary with a ``contigs`` entry.
     """
     fasta = Fasta(input_fasta)
     contig_metrics = fasta.qc_metrics(min_contig_length)
@@ -952,13 +1029,19 @@ def job_consensus_bcftools(
     output_fasta: FullPath,
     **kwargs
 ) -> None:
-    """Generate a consensus FASTA from a VCF file using bcftools.
+    """Generate a consensus FASTA by mapping reads and calling variants.
+
+    The function maps ``input_fastq`` to ``reference_fasta``, calls and indexes a
+    VCF, annotates it with major alternative allele frequency (MAAF), retains
+    variants with ``MAAF > 0.5``, and applies those variants with
+    ``bcftools consensus``.
     
     Args:
         reference_fasta (FullPath): Path to reference FASTA file.
-        input_vcf (FullPath): Path to input VCF file with variants.
+        input_fastq (FullPath): Path to reads used for mapping and variant calling.
         output_fasta (FullPath): Path where output consensus FASTA will be written.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+        kwargs (dict[str, object]): May include ``threads`` for minimap2. Other
+            keys are ignored.
 
     Returns:
         None
@@ -1021,6 +1104,19 @@ def job_vcf_annotate_maaf(
     input_vcf: str,
     output_vcf: str
 ):
+    """Add a major alternative allele frequency (MAAF) INFO field to a VCF.
+
+    For short variants, MAAF is the largest alternative allele depth divided by
+    total allele depth. For structural variants, it is calculated from the
+    ``DR``, ``DV``, ``RR``, and ``RV`` sample fields.
+
+    Args:
+        input_vcf (str): Path to the input VCF or compressed VCF.
+        output_vcf (str): Path where the annotated VCF will be written.
+
+    Returns:
+        None
+    """
 
     vcf_in = pysam.VariantFile(input_vcf, "r")
     header = vcf_in.header
@@ -1100,6 +1196,19 @@ def job_collate_flagstat_jsons(
     input_directories: list[FullPath],
     output_csv: FullPath
 ):
+    """Collate ``flagstat.json`` summaries from multiple sample directories.
+
+    One CSV row is written for each directory, using its basename as the sample
+    identifier. Each directory must contain a ``flagstat.json`` file.
+
+    Args:
+        input_directories (list[FullPath]): Directories containing flagstat JSON
+            files.
+        output_csv (FullPath): Destination CSV path.
+
+    Returns:
+        None
+    """
 
 # extract the "QC-passed reads": ["total","mapped"]  from each json and average them across all jsons, then write to output_json
     results = []
@@ -1123,6 +1232,19 @@ def job_collate_fasta_consensus(
     input_directories: list[FullPath],
     output_fasta: FullPath
 ):
+    """Combine ``final_consensus.fasta`` files from sample directories.
+
+    Each output header contains the source directory basename and the original
+    reference name, separated by a space.
+
+    Args:
+        input_directories (list[FullPath]): Directories containing
+            ``final_consensus.fasta`` files.
+        output_fasta (FullPath): Destination combined FASTA path.
+
+    Returns:
+        None
+    """
     with open(output_fasta, "w") as O:
         for dir in input_directories:
             fasta_path = os.path.join(dir, "final_consensus.fasta")
@@ -1138,7 +1260,10 @@ def job_median_depth_samtools(
     input_bam: FullPath,
     output_json: FullPath
 ):
-    """Calculate median read depth across the genome using samtools depth.
+    """Calculate median depth across positions reported by ``samtools depth``.
+
+    Zero-coverage positions are not included because the command does not use
+    ``-a``. Depths from all references are pooled into one median.
     
     Args:
         input_bam (FullPath): Path to input BAM file with reads mapped to reference.
@@ -1228,15 +1353,25 @@ def job_concatenate_ont_data(
     remove_source_bams: bool = False,
     **kwargs
 ) -> None:
-    """Concatenate BAM files from multiple ONT barcodes into a single BAM per sample.
-    
-    This function takes a directory containing subdirectories for each barcode, each with a BAM file of mapped reads. It concatenates the BAM files for all barcodes corresponding to the same sample into a single BAM file per sample in the output directory. The barcode list file is used to determine which barcodes belong to which samples.
+    """Combine barcode BAM files into one BAM per sample.
+
+    The comma-delimited mapping file must contain ``barcode`` and ``sample_id``
+    columns. BAM files are discovered below ``input_dir/<barcode>/``. Optionally,
+    the function also writes gzipped FASTQ files and removes the source BAM files.
 
     Args:
         input_dir (FullPath): Path to input directory containing subdirectories for each barcode with BAM files.
         output_dir (FullPath): Path where concatenated BAM files will be written, one per sample.
-        id_csv_file (FullPath): Path to a TSV file mapping barcodes to sample IDs. Columns: barcode, sample_id.
-        **kwargs (dict[str, object]): Additional options for interface symmetry.
+        id_csv_file (FullPath): Path to the CSV mapping barcodes to sample IDs.
+            Required columns: ``barcode``, ``sample_id``.
+        write_fastq (bool): Write a gzipped FASTQ file for each combined BAM.
+            Defaults to ``False``.
+        threads (int): Number of pigz compression threads when ``write_fastq`` is
+            enabled. Defaults to 4.
+        remove_source_bams (bool): Remove barcode BAM files after they are copied or
+            concatenated. Defaults to ``False``.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
         None
@@ -1311,12 +1446,12 @@ def job_create_fake_asm(
     output_dir: FullPath,
     lab_id: str
 ):
-    """Create a fake assembly FASTA file for testing purposes.
-    
-    This function generates a simple FASTA file with a single contig of 100 kb, consisting of random DNA sequence. The output FASTA file is written to the specified output directory.
+    """Create a 100-kb, one-contig random FASTA fixture.
 
     Args:
         output_dir (FullPath): Path where the fake assembly FASTA file will be written.
+        lab_id (str): Sample identifier used in the filename and contig header.
+
     Returns:
         None
     """
@@ -1330,7 +1465,13 @@ def job_create_fake_asm(
 def job_create_fake_fastq(
     output_fastq: FullPath,
 ):
-    """Create a fake FASTQ file for testing purposes.
+    """Create an empty gzipped FASTQ fixture.
+
+    Args:
+        output_fastq (FullPath): Destination path for the empty gzip file.
+
+    Returns:
+        None
     """
 
     output_dir = os.path.dirname(output_fastq)
@@ -1349,13 +1490,16 @@ def job_remove_adapters_dorado(
     threads: int = 4,
     **kwargs
 ) -> None:
-    """Remove adapters from reads using dorado.
+    """Trim sequencing adapters from BAM or gzipped FASTQ reads with Dorado.
     
     Args:
-        input_fastq (FullPath): Path to input fastq file with reads.
-        output_fastq (FullPath): Path where adapter-trimmed fastq will be written.
+        input_reads (FullPath): Path to input BAM or gzipped FASTQ reads.
+        output_reads (FullPath): Destination for adapter-trimmed reads. The output
+            format follows the detected input format.
+        sequencing_kit (str): Dorado sequencing-kit identifier used for trimming.
         threads (int): Number of threads to use. Defaults to 4.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
 
     Returns:
         None
@@ -1375,12 +1519,13 @@ def job_remove_adapters_dorado(
 def extract_nanostats_metrics(
     input_nano_stats: FullPath
 ) -> dict:
-    """Extract relevant metrics from a NanoStats TSV output.
+    """Extract selected read-count, base-count, N50, quality, and Q-score metrics.
     
     Args:
         input_nano_stats (FullPath): Path to input TSV file generated by NanoStats.
     Returns:
-        dict: Dictionary containing extracted metrics such as total reads, mean read length, and N50.
+        dict: Dictionary containing ``reads_total_number``, ``reads_total_bases``,
+            ``reads_n50``, ``mean_quality``, and available ``above_Q*`` counts.
     """
     metrics = {}
     metrics_map = {
@@ -1415,7 +1560,7 @@ def extract_nanostats_metrics(
 def get_circular_contigs(
     input_contigs: FullPath,
 ) -> list:
-    """Get a list of circularised contig names from a FASTA file.
+    """Return names of FASTA records whose headers contain ``circular``.
     
     Args:
         input_contigs (FullPath): Path to input FASTA file with contigs.
@@ -1460,6 +1605,33 @@ def job_write_report(
     pipeline_checkpoints: Optional[dict] = None,
     **kwargs
 ):
+    """Write a JSON report containing available workflow metrics and metadata.
+
+    The report always includes the uONT version, input command, and timestamp.
+    Optional inputs add contig QC, NanoStats read metrics, contig depth and
+    circularity details, and pipeline checkpoints. ``dnaapler_file`` acts only as
+    a signal to include contig information; its contents are not read.
+
+    Args:
+        output_report (FullPath): Destination JSON report path.
+        input_reads (Optional[FullPath]): Reads path used when calculating QC with
+            ``input_fasta``.
+        input_fasta (Optional[FullPath]): Assembly path used for contig QC and
+            circular-contig detection.
+        nano_stats_file (Optional[FullPath]): NanoStats TSV to merge into read
+            metrics.
+        dnaapler_file (Optional[FullPath]): Signal that reorientation information
+            should be included.
+        depth_report_file (Optional[FullPath]): JSON depth report required when
+            ``dnaapler_file`` is provided.
+        pipeline_checkpoints (Optional[dict]): Workflow status values to add to the
+            report.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
+    Returns:
+        None
+    """
     d = {
         "uont version": g['uont_version'],
         "input command": g['input_command'],
@@ -1509,7 +1681,7 @@ def job_nanoplot(
     threads: int = 4,
     **kwargs
 ) -> JobStatus:
-    """Generate a NanoPlot report from a FASTQ file.
+    """Generate a NanoPlot report from a BAM or gzipped FASTQ file.
     
     Args:
         input_reads (FullPath): Path to input FASTQ or BAM file with reads.
@@ -1517,7 +1689,8 @@ def job_nanoplot(
         threads (int): Number of threads to use. Defaults to 4.
         kwargs (dict[str, object]): Additional options for interface symmetry.
     Returns:
-        JobStatus: Status of the NanoPlot job, including success or failure and any relevant messages.
+        JobStatus: ``SUCCESS`` when NanoPlot completes; ``FAILED`` if it raises an
+            exception.
     """
     logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
     filetype = get_filetype(input_reads)
@@ -1538,6 +1711,9 @@ def get_fasta_dict(
     
     Args:
         input_fasta (FullPath): Path to input FASTA file.
+        first_word (bool): Use only the first whitespace-delimited token from each
+            header as the dictionary key. Defaults to ``True``.
+
     Returns:
         dict: Dictionary where keys are contig names and values are sequences.
     """
@@ -1567,13 +1743,13 @@ def job_split_fasta(
     output_dir: FullPath,
     **kwargs
 ):
-    """Split a FASTA file into multiple one file per contig in the specified output directory.
+    """Write one FASTA file per contig in the output directory.
 
     Args:
         input_fasta (FullPath): Path to input FASTA file.
-        run_report_json (FullPath): Path to run report JSON file.
         output_dir (FullPath): Path where split FASTA files will be written.
-        kwargs (dict[str, object]): Additional options for interface symmetry.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
     Returns:
         None
     """
@@ -1607,6 +1783,38 @@ def job_test_wf(
     save_unpolished_contigs: bool = False,
     **kwargs
 ):
+    """Create deterministic fixture outputs for workflow tests.
+
+    The job copies packaged assembly and report fixtures, splits the assembly into
+    one file per contig, and optionally copies the supplied reads as filtered
+    reads. Most workflow parameters are accepted only to match the production
+    workflow interface and do not affect the generated fixtures.
+
+    Args:
+        input_reads (FullPath): Reads copied to the fixture output when
+            ``save_filtered_reads`` is enabled.
+        output_dir (FullPath): Directory where fixture outputs are written.
+        save_filtered_reads (bool): Include ``filtered_reads.fastq.gz`` in the
+            output. Defaults to ``False``.
+        threads (int): Accepted for workflow compatibility and ignored.
+        min_read_depth (int): Accepted for workflow compatibility and ignored.
+        max_contigs (int): Accepted for workflow compatibility and ignored.
+        min_read_length (int): Accepted for workflow compatibility and ignored.
+        min_q_score (int): Accepted for workflow compatibility and ignored.
+        genome_size (Optional[int]): Accepted for workflow compatibility and ignored.
+        rmlst (bool): Accepted for workflow compatibility and ignored.
+        lab_id (Optional[str]): Accepted for workflow compatibility and ignored.
+        link_id (Optional[str]): Accepted for workflow compatibility and ignored.
+        link_directory (Optional[FullPath]): Accepted for workflow compatibility and
+            ignored.
+        save_unpolished_contigs (bool): Accepted for workflow compatibility and
+            ignored.
+        kwargs (dict[str, object]): Additional options accepted for workflow
+            compatibility and ignored.
+
+    Returns:
+        None
+    """
     filtered_fastq = f"filtered.fastq.gz"
     shutil.copy(input_reads, filtered_fastq)
     os.mkdir("intermediate_assembly_files")
