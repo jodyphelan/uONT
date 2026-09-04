@@ -1755,7 +1755,7 @@ def job_split_fasta(
     """
     logging.info(f"Splitting FASTA file {input_fasta} into individual contig files. Output directory: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
-    seq_dict = get_fasta_dict(input_fasta)
+    seq_dict = get_fasta_dict(input_fasta, first_word=False)
     
 
     for contig_name,seq in seq_dict.items():
