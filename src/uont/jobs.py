@@ -1695,9 +1695,9 @@ def job_nanoplot(
     logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
     filetype = get_filetype(input_reads)
     if filetype == "bam":
-        cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads} --tsv_stats"
+        cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads} --tsv_stats --no_static"
     elif filetype == "fastq.gz":
-        cmd = f"NanoPlot --fastq {input_reads} -o {output_dir} -t {threads} --tsv_stats"
+        cmd = f"NanoPlot --fastq {input_reads} -o {output_dir} -t {threads} --tsv_stats --no_static"
     else:
         raise ValueError(f"Unsupported file type for NanoPlot: {filetype}. Only BAM and FASTQ files are supported.")
     run_cmd(cmd)
