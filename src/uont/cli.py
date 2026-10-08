@@ -606,6 +606,12 @@ def cli_uont():
         help="Minimum read depth for subsampling"
     )
     job_subparser.add_argument(
+        "--min-input-reads", 
+        type=int, 
+        default=10000, 
+        help="Minimum number of input reads required to proceed with assembly"
+    )
+    job_subparser.add_argument(
         "--max-contigs", 
         type=int, 
         default=80, 
@@ -779,6 +785,7 @@ def cli_uont():
                 parallel_assembly_jobs=args.parallel_assembly_jobs,
                 assembly_timeout_seconds=args.assembly_timeout_seconds,
                 min_read_depth=args.min_read_depth,
+                min_input_reads=args.min_input_reads,
                 max_contigs=args.max_contigs,
                 max_samples = args.max_samples,
                 min_read_length=args.min_read_length,

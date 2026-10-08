@@ -452,8 +452,8 @@ def setup_dorado():
 
 def setup_plassembler_db():
     if get_plassembler_db_dir() is None:
-        conda_base_dir = os.environ.get("CONDA_PREFIX")
-        plassembler_db_dir = Path(conda_base_dir) / "plassembler_db"
+        conda_base_dir = Path(sys.base_prefix)
+        plassembler_db_dir = conda_base_dir / "plassembler_db"
         #plassembler download -d "$CONDA_PREFIX"/plassembler_db
         cmd = f"plassembler download -d {plassembler_db_dir}"
         sp.run(cmd, shell=True, check=True)

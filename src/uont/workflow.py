@@ -152,6 +152,7 @@ def wf_assemble(
     save_unpolished_contigs: bool = False,
     max_samples: int = 4,
     additional_assemblies_dir: Optional[FullPath] = None,
+    min_input_reads: int = 10000,
     **kwargs
 ) -> None:
     """Run the assemble workflow from raw reads through polishing.
@@ -170,6 +171,7 @@ def wf_assemble(
             read_downsampling, assembler, polishing).
         threads (int): Number of threads to use. Defaults to 4.
         min_read_depth (int): Minimum read depth for assembly subsampling. Defaults to 10.
+        min_input_reads (int): Minimum number of input reads required to proceed with assembly. Defaults to 10000.
         max_contigs (int): Maximum number of contigs allowed in assembly. Defaults to 80.
         min_read_length (int): Minimum read length for filtering. Defaults to 1000.
         min_q_score (int): Minimum average read quality score for filtering. Defaults to 10.
@@ -225,7 +227,7 @@ def wf_assemble(
     num_reads = ns['above_Q10']
 
 
-    if num_reads < 10000:
+    if num_reads < min_input_reads:
         pipeline_checkpoints['read_count_pass'] = JobStatus.FAILED
         exit_on_assembly_failure(output_dir, pipeline_checkpoints)
     else:
