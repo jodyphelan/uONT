@@ -415,6 +415,12 @@ def cli_uont():
         help="Per-assembly timeout in seconds for each parallel autocycler helper job",
     )
     assemble_wf_parser.add_argument(
+        "--min-input-reads", 
+        type=int, 
+        default=10000, 
+        help="Minimum number of input reads required to proceed with assembly"
+    )
+    assemble_wf_parser.add_argument(
         "--min-read-depth",
         type=int,
         default=25,
