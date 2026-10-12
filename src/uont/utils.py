@@ -99,7 +99,6 @@ def get_software_version(tool: str) -> str:
 
     x = sp.run(cmds[tool], shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     text = x.stdout.decode("utf-8", errors="ignore") + x.stderr.decode("utf-8", errors="ignore")
-    print(text)
     match = re.search(regex[tool], text, flags=re.IGNORECASE)
     if not match:
         # Fallback: try to extract the first semantic-looking version from output.
