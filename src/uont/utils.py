@@ -37,7 +37,7 @@ DEFAULT_CLI_DEPENDENCIES = [
     "NanoPlot",
     "plassembler",
     "myloasm",
-    "metamdbg",
+    "metaMDBG",
     "nextDenovo",
     "nextPolish",
 ]
