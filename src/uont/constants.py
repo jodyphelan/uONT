@@ -3,7 +3,7 @@ ASSEMBLERS = [
     "myloasm",
     "miniasm",
     "flye",
-    "metamdbg",
+    "metaMDBG",
     "necat",
     "nextdenovo",
     "plassembler",
