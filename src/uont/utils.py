@@ -37,6 +37,7 @@ DEFAULT_CLI_DEPENDENCIES = [
     "NanoPlot",
     "plassembler",
     "myloasm",
+    "metamdbg",
     "nextDenovo",
     "nextPolish",
 ]
@@ -65,6 +66,7 @@ def get_software_version(tool: str) -> str:
         "myloasm": "myloasm --version",
         "nextDenovo": "nextDenovo --version",
         "nextPolish": "nextPolish --version",
+        "metamdbg": "metamdbg --version",
     }
     regex = {
         "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
@@ -89,6 +91,7 @@ def get_software_version(tool: str) -> str:
         "myloasm": r"myloasm\s+v?([0-9][0-9A-Za-z_.-]*)",
         "nextDenovo": r"nextDenovo\s+v?([0-9][0-9A-Za-z_.-]*)",
         "nextPolish": r"nextPolish\s+v?([0-9][0-9A-Za-z_.-]*)",
+        "metamdbg": r"Version: 1.4\s+([0-9][0-9A-Za-z_.-]*)",
     }
 
     if tool not in cmds:
@@ -96,6 +99,7 @@ def get_software_version(tool: str) -> str:
 
     x = sp.run(cmds[tool], shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     text = x.stdout.decode("utf-8", errors="ignore") + x.stderr.decode("utf-8", errors="ignore")
+    print(text)
     match = re.search(regex[tool], text, flags=re.IGNORECASE)
     if not match:
         # Fallback: try to extract the first semantic-looking version from output.

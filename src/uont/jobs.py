@@ -403,7 +403,7 @@ def job_assemble_autocycler(
     threads_per_assembly: int = 1,
     parallel_assembly_jobs: int = 4,
     assembly_timeout_seconds: Optional[float] = None,
-    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
+    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm","metamdbg"),
     min_read_depth: int = 10,
     max_contigs: int = 80,
     max_samples: int = 4,

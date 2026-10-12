@@ -7,7 +7,8 @@ ASSEMBLERS = [
     "necat",
     "nextdenovo",
     "plassembler",
-    "canu"
+    "canu",
+    "metamdbg"
 ]
 
 DORADO_VERSION = "2.1.1"
