@@ -458,9 +458,11 @@ def job_assemble_autocycler(
     logging.info(f"Starting autocycler assembly workflow")
     
     if platform.machine() == "arm64":
-        assemblers = tuple(a for a in assemblers if a != "nextdenovo")
+        assemblers = tuple(a.lower() for a in assemblers if a != "nextdenovo")
         logging.warning("NextDenovo is not currently supported on ARM64 architecture. It will be skipped in the autocycler workflow.")
-   
+    else:
+        assemblers = tuple(a.lower() for a in assemblers)
+        
     # Create output directory structure
     autocycler_output_dir = 'autocycler'
     if not os.path.exists(autocycler_output_dir):
