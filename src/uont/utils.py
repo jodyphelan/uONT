@@ -66,7 +66,7 @@ def get_software_version(tool: str) -> str:
         "myloasm": "myloasm --version",
         "nextDenovo": "nextDenovo --version",
         "nextPolish": "nextPolish --version",
-        "metamdbg": "metamdbg --version",
+        "metamdbg": "metaMDBG --version",
     }
     regex = {
         "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
