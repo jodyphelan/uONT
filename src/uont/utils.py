@@ -66,7 +66,7 @@ def get_software_version(tool: str) -> str:
         "myloasm": "myloasm --version",
         "nextDenovo": "nextDenovo --version",
         "nextPolish": "nextPolish --version",
-        "metamdbg": "metaMDBG --version",
+        "metaMDBG": "metaMDBG --version",
     }
     regex = {
         "autocycler": r"autocycler\s+v?([0-9][0-9A-Za-z_.-]*)",
@@ -91,7 +91,7 @@ def get_software_version(tool: str) -> str:
         "myloasm": r"myloasm\s+v?([0-9][0-9A-Za-z_.-]*)",
         "nextDenovo": r"nextDenovo\s+v?([0-9][0-9A-Za-z_.-]*)",
         "nextPolish": r"nextPolish\s+v?([0-9][0-9A-Za-z_.-]*)",
-        "metamdbg": r"Version: 1.4\s+([0-9][0-9A-Za-z_.-]*)",
+        "metaMDBG": r"Version: 1.4\s+([0-9][0-9A-Za-z_.-]*)",
     }
 
     if tool not in cmds:
