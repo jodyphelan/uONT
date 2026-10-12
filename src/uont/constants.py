@@ -5,7 +5,7 @@ ASSEMBLERS = [
     "flye",
     "metaMDBG",
     "necat",
-    "nextdenovo",
+    "nextDenovo",
     "plassembler",
     "canu",
     "metamdbg"
