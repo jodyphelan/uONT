@@ -96,7 +96,7 @@ def get_software_version(tool: str) -> str:
 
     if tool not in cmds:
         raise ValueError(f"No version command configured for tool: {tool}")
-
+    logging.debug(f"Running version command for tool {tool}: {cmds[tool]}")
     x = sp.run(cmds[tool], shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     text = x.stdout.decode("utf-8", errors="ignore") + x.stderr.decode("utf-8", errors="ignore")
     match = re.search(regex[tool], text, flags=re.IGNORECASE)
