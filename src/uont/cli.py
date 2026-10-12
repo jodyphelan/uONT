@@ -379,7 +379,7 @@ def cli_uont():
         "--assemblers",
         type=str,
         nargs="+",
-        default=("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
+        default=("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm","metamdbg"),
         choices=get_available_assemblers(),
         help="The assembler(s) to use for assembly",
     )
