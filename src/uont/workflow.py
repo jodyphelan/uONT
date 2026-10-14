@@ -15,13 +15,9 @@ from .jobs import extract_nanostats_metrics, job_assemble_autocycler, bam2fastq,
 from .types import FullPath
 
 from .process import (
-    process_collect_qc_results,
     process_consensus,
     process_estimate_genome_size,
-    process_fastq_filter,
     process_polish,
-    process_downsample_reads_to_target_depth,
-    process_assemble,
     process_remove_adapters,
 )
 
@@ -141,7 +137,7 @@ def wf_assemble(
     threads_per_assembly: int = 1,
     parallel_assembly_jobs: int = 1,
     assembly_timeout_seconds: Optional[float] = None,
-    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","plassembler","myloasm"),
+    assemblers: Tuple[str] = ("flye", "miniasm","nextdenovo", "raven","metamdbg","myloasm"),
     min_read_depth: int = 25,
     max_contigs: int = 80,
     min_read_length: int = 1000,
