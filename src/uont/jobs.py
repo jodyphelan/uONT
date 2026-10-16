@@ -22,7 +22,7 @@ from tqdm import tqdm
 import platform
 import subprocess as sp
 from typing import Optional, Tuple
-from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, return_job_status, JobStatus
+from .utils import get_filetype, run_cmd, run_in_tempdir, timeit, g, return_job_status, JobStatus, get_software_version
 from .types import FullPath, QCMetrics
 from .qc import Fasta
 from joblib import Parallel, delayed
@@ -52,6 +52,7 @@ def job_fastq_filter_chopper(
         JobStatus: ``SUCCESS`` when filtering completes; ``FAILED`` if it raises an
             exception.
     """
+    g[f'tool_version:chopper'] = get_software_version('chopper')
     logging.info(f"Running chopper on {input_fastq} with output {output_fastq} using {threads} threads.")
     cmd = f"chopper -t {threads} -q {quality} -l {minreadlen} -i {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
@@ -137,6 +138,8 @@ def job_ont_pre_assembly_qc(
         JobStatus: ``SUCCESS`` when filtering completes; ``FAILED`` if it raises an
             exception.
     """
+    for tool in ["chopper", "filtlong"]:
+        g[f'tool_version:{tool}'] = get_software_version(tool)
     logging.info(f"Running basic filtering on {input_fastq} with output {output_fastq} using {threads} threads.")
     # chopper
     cmd = f"gunzip -c {input_fastq} | chopper --trim-approach fixed-crop --minlength {minreadlen} --quality {quality} --headcrop {headcrop} --tailcrop {tailcrop} -t {threads} > intermediate.fastq"
@@ -162,6 +165,7 @@ def job_remove_adapters_porechop(
     Returns:
         None
     """
+    g[f'tool_version:porechop_abi'] = get_software_version('porechop_abi')
     logging.info(f"Running porechop on {input_fastq} with output {output_fastq} using {threads} threads.")
     cmd = f"porechop_abi -t {threads} -i {input_fastq} -o {output_fastq}"
     run_cmd(cmd)
@@ -219,6 +223,7 @@ def job_reorient_contigs_dnaapler(
         JobStatus: ``SUCCESS`` when reorientation completes; ``FAILED`` if it raises
             an exception. The summary is moved only when ``output_stats`` is truthy.
     """
+    g[f'tool_version:dnaapler'] = get_software_version('dnaapler')
     logging.info(f"Running dnaapler to reorient contigs in {input_fasta} using {threads} threads.")
     cmd = f"dnaapler all --input {input_fasta} --output output.dnaapler --threads {threads}"
     run_cmd(cmd)
@@ -332,6 +337,9 @@ def job_get_contig_depths(
             raises an exception.
     """
     logging.info(f"Calculating contig depths for {input_fasta} using reads from {input_fastq} with {threads} threads.")
+
+    for tool in ["minimap2", "samtools"]:
+        g[f'tool_version:{tool}'] = get_software_version(tool)
     
     # Map reads to assembly
     cmd = f"minimap2 -ax map-ont -t {threads} {input_fasta} {input_fastq} | samtools sort -@ {threads} -o mapped.bam -"
@@ -387,6 +395,7 @@ def bam2fastq(
     Returns:
         None
     """
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     logging.info(f"Converting BAM {input_bam} to FASTQ {output_fastq} using {threads} threads.")
     cmd = f"samtools fastq -@ {threads} {input_bam} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
@@ -462,7 +471,11 @@ def job_assemble_autocycler(
         logging.warning("NextDenovo is not currently supported on ARM64 architecture. It will be skipped in the autocycler workflow.")
     else:
         assemblers = tuple(a.lower() for a in assemblers)
-        
+
+    g[f'tool_version:autocycler'] = get_software_version('autocycler')
+    for assembler in assemblers:
+        g[f'tool_version:{assembler}'] = get_software_version(assembler)
+
     # Create output directory structure
     autocycler_output_dir = 'autocycler'
     if not os.path.exists(autocycler_output_dir):
@@ -582,6 +595,7 @@ def job_estimate_genome_size_lrge(
     Returns:
         int: Estimated genome size in base pairs.
     """
+    g[f'tool_version:lrge'] = get_software_version('lrge')
     logging.info(f"Running lrge genome size estimation on {input_fastq} using {threads} threads.")
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         cmd = f"lrge {input_fastq} -t {threads} -o {tmp.name}"
@@ -607,6 +621,7 @@ def job_estimate_genome_size_autocycler(
     Returns:
         int: Estimated genome size in base pairs.
     """
+    g[f'tool_version:autocycler'] = get_software_version('autocycler')
     logging.info(f"Running autocycler genome size estimation on {input_fastq} using {threads} threads.")
     #autocycler helper genome_size --reads $isolate.trim.q"$q_out".1000.fastq --threads "$t"
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -639,6 +654,7 @@ def job_downsample_filtlong(
         None
     """
     logging.info(f"Running filtlong downsample on {input_fastq} with target bases {target_bases} to output {output_fastq}.")
+    g[f'tool_version:filtlong'] = get_software_version('filtlong')
     cmd = f"filtlong --target_bases {target_bases} --mean_q_weight 10 {input_fastq} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
@@ -674,7 +690,7 @@ def job_polish_dorado(
             exception.
     """
     logging.info(f"Running dorado polishing on {input_assembly}")
-    
+    g[f'tool_version:dorado'] = get_software_version('dorado')
     tmp_dir = kwargs.get("tmp_dir")
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -747,7 +763,7 @@ def job_polish_medaka(
     """
     
     logging.info(f"Running medaka polishing (round 1) for {input_assembly}")
-    
+    g[f'tool_version:medaka'] = get_software_version('medaka')
     tmp_dir = kwargs.get("tmp_dir")
     tmp_dir1 = os.path.join(tmp_dir, "round1")
     os.makedirs(tmp_dir1, exist_ok=True)
@@ -801,6 +817,8 @@ def job_map_reads_minimap2(
         None
     """
     logging.info(f"Mapping reads to assembly with minimap2. Reads: {input_reads}, Assembly: {input_assembly}, Output BAM: {output_bam}")
+    g[f'tool_version:minimap2'] = get_software_version('minimap2')
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     cmd = f"minimap2 -ax map-ont -t {threads} {input_assembly} {input_reads} | samtools sort -o {output_bam}"
     run_cmd(cmd)
     cmd = f"samtools index {output_bam}"
@@ -858,6 +876,7 @@ def job_rmlst(
         None
     """
     logging.info(f"Running rMLST analysis on {input_fasta}. Output: {output_tsv}")
+    g[f'tool_version:rmlst'] = get_software_version('rmlst')
     cmd = f"rmlst -f {input_fasta} --species-only -o {output_tsv}"
     run_cmd(cmd)
 
@@ -925,6 +944,7 @@ def job_dehumanise_hostile(
         None
     """
     logging.info(f"Running hostile to dehumanise reads in {input_fastq}. Output: {output_fastq}")
+    g[f'tool_version:hostile'] = get_software_version('hostile')
     gzip_output = output_fastq.endswith(".gz")
     if gzip_output:
         output_fastq = output_fastq[:-3]
@@ -953,6 +973,7 @@ def get_fastq_QC_metrics(
         dict[str, int]: Read N50, total read count, and total bases under the
             ``reads_n50``, ``reads_total_number``, and ``reads_total_bases`` keys.
     """
+    g[f'tool_version:seqkit'] = get_software_version('seqkit')
     metrics = {}
     seqkit_stats_file = f"seqkit_stats.tsv"
     cmd = f"seqkit stats -Ta {input_fastq} > {seqkit_stats_file}"
@@ -1019,6 +1040,7 @@ def job_variant_calling_bcftools(
         None
     """
     logging.info(f"Generating VCF with bcftools. BAM: {input_bam}, Reference: {reference_fasta}, Output VCF: {output_vcf}")
+    g[f'tool_version:bcftools'] = get_software_version('bcftools')
     cmd = f"bcftools mpileup -a AD -f {reference_fasta} {input_bam} | bcftools call -mv -Oz -o {output_vcf}"
     run_cmd(cmd)
     cmd = f"bcftools index {output_vcf}"
@@ -1048,6 +1070,7 @@ def job_consensus_bcftools(
     Returns:
         None
     """
+    g[f'tool_version:bcftools'] = get_software_version('bcftools')
     bam_filename = f"{output_fasta}.bam"
     job_map_reads_minimap2(
         input_reads=input_fastq,
@@ -1170,6 +1193,7 @@ def job_mapping_stats_flagstat(
         None
     """
     logging.info(f"Generating mapping statistics with samtools flagstat. Input BAM: {input_bam}, Output JSON: {output_json}")
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     cmd = f"samtools flagstat {input_bam} -O json > {output_json}"
     run_cmd(cmd)
 
@@ -1274,6 +1298,7 @@ def job_median_depth_samtools(
         None
     """
     logging.info(f"Calculating median read depth with samtools depth. Input BAM: {input_bam}, Output JSON: {output_json}")
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     tmp_depth_file = f"{output_json}.depth"
     cmd = f"samtools depth {input_bam} > {tmp_depth_file}"
     run_cmd(cmd)
@@ -1336,6 +1361,8 @@ def job_map_reads_bwa(
     Returns:
         None
     """
+    g[f'tool_version:bwa'] = get_software_version('bwa')
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     logging.info(f"Mapping reads to assembly with bwa mem. Reads: {input_reads}, Assembly: {input_assembly}, Output BAM: {output_bam}")
     cmd = f"bwa index {input_assembly}"
     run_cmd(cmd)
@@ -1441,6 +1468,7 @@ def job_bam_to_fastq(
     Returns:
         None
     """
+    g[f'tool_version:samtools'] = get_software_version('samtools')
     cmd = f"samtools fastq {input_bam} | pigz -p {threads} -c > {output_fastq}"
     run_cmd(cmd)
 
@@ -1506,6 +1534,7 @@ def job_remove_adapters_dorado(
     Returns:
         None
     """
+    g[f'tool_version:dorado'] = get_software_version('dorado')
     filetype = get_filetype(input_reads)
     if filetype == "bam":
         tempfile = 'trimmed.bam'
@@ -1638,8 +1667,17 @@ def job_write_report(
         "uont version": g['uont_version'],
         "input command": g['input_command'],
         "timestamp": datetime.datetime.now().isoformat(),
+        
+        "pipeline": {
+            "assemblers_used": [],
+            "tool_versions": {}
+        }
 
     }
+    for key, value in g.items():
+        if key.startswith('tool_version:'):
+            d['tool_versions'][key.split(':')[1]] = value
+
     if input_reads and input_fasta:
         qc = job_get_qc_metrics(
             input_reads=input_reads,
@@ -1668,7 +1706,7 @@ def job_write_report(
         d['genome_depth_estimate'] = d['reads']['reads_total_bases'] / d['contigs']['total_length']
     
     if pipeline_checkpoints:
-        d['pipeline_checkpoints'] = {k: str(v) for k, v in pipeline_checkpoints.items()}
+        d['pipeline']['checkpoints'] = {k: str(v) for k, v in pipeline_checkpoints.items()}
         
     with open(output_report, "w") as O:
         json.dump(d, O, indent=4)
@@ -1695,6 +1733,7 @@ def job_nanoplot(
             exception.
     """
     logging.info(f"Generating NanoPlot report for {input_reads}. Output directory: {output_dir}")
+    g[f'tool_version:nanoplot'] = get_software_version('NanoPlot')
     filetype = get_filetype(input_reads)
     if filetype == "bam":
         cmd = f"NanoPlot --ubam {input_reads} -o {output_dir} -t {threads} --tsv_stats --no_static"
