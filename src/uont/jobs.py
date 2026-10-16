@@ -475,7 +475,8 @@ def job_assemble_autocycler(
     g[f'tool_version:autocycler'] = get_software_version('autocycler')
     for assembler in assemblers:
         g[f'tool_version:{assembler}'] = get_software_version(assembler)
-
+    g['assemblers_used'] = assemblers
+    
     # Create output directory structure
     autocycler_output_dir = 'autocycler'
     if not os.path.exists(autocycler_output_dir):
@@ -1663,20 +1664,20 @@ def job_write_report(
     Returns:
         None
     """
+    print("*" * 80)
     d = {
         "uont version": g['uont_version'],
         "input command": g['input_command'],
         "timestamp": datetime.datetime.now().isoformat(),
-        
         "pipeline": {
-            "assemblers_used": [],
+            "assemblers_used": g['assemblers_used'],
             "tool_versions": {}
         }
 
     }
     for key, value in g.items():
         if key.startswith('tool_version:'):
-            d['tool_versions'][key.split(':')[1]] = value
+            d['pipeline']['tool_versions'][key.split(':')[1]] = value
 
     if input_reads and input_fasta:
         qc = job_get_qc_metrics(
