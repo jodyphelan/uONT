@@ -43,6 +43,11 @@ DEFAULT_CLI_DEPENDENCIES = [
 ]
 
 def get_software_version(tool: str) -> str:
+    cache_key = f"tool_version:{tool}"
+    if cache_key in g:
+        logging.debug(f"Returning cached version for tool {tool}: {g[cache_key]}")
+        return g[cache_key]
+
     cmds = {
         "autocycler": "autocycler --version",
         "bcftools": "bcftools --version",
@@ -99,15 +104,18 @@ def get_software_version(tool: str) -> str:
     logging.debug(f"Running version command for tool {tool}: {cmds[tool]}")
     x = sp.run(cmds[tool], shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     text = x.stdout.decode("utf-8", errors="ignore") + x.stderr.decode("utf-8", errors="ignore")
-    logging.debug(text)
     match = re.search(regex[tool], text, flags=re.IGNORECASE)
     if not match:
         # Fallback: try to extract the first semantic-looking version from output.
         fallback = re.search(r"([0-9]+\.[0-9]+(?:\.[0-9A-Za-z_.-]+)?)", text)
         if fallback:
-            return fallback.group(1)
+            version = fallback.group(1)
+            g[cache_key] = version
+            return version
         raise ValueError(f"Could not parse version for tool '{tool}' from output:\n{text}")
-    return match.group(1)
+    version = match.group(1)
+    g[cache_key] = version
+    return version
 
 def check_cli_dependencies(programs: list[str] | None = None) -> tuple[list[str], list[str]]:
     """Return available and missing CLI dependencies.
